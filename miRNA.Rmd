@@ -379,14 +379,8 @@ cv_lasso <- cv.glmnet(x_training, y_training, alpha = 1, family = "binomial")
 #coef(model)
 
 # Display binomial deviance
-plot(cv_lasso)
+#plot(cv_lasso)
 #coef(cv_lasso, cv_lasso$lambda.1se)
-
-```
-
-We evaluate the model with accuracy and an ROC curve.
-
-``` {R roc}
 
 # Build model with lamnda min
 lasso_model <- glmnet(x_training, y_training, alpha = 1, family = "binomial", lambda = cv_lasso$lambda.min)
@@ -395,9 +389,11 @@ x_test <- model.matrix(condition ~., test_scaled_df)[,-1]
 probabilities <- lasso_model %>% predict(newx = x_test, type="response")
 predicted_classes <- ifelse(probabilities > 0.5, "Case", "Control")
 
+# Confusion matrix
+table(pred = predicted_classes, true = test_scaled_df[, c('condition')])
+
 # Model accuracy
-observed_classes <- test_scaled_df$condition
-model_accuracy = mean(predicted_classes == observed_classes)
+model_accuracy = mean(predicted_classes == test_scaled_df$condition)
 cat("The accuracy is", model_accuracy, "\n")
 
 # ROC
@@ -430,12 +426,9 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-rm(x_training, y_training, x_test, model_accuracy, observed_classes, auc_ROCR)
+#rm(x_training, y_training, x_test, model_accuracy, auc_ROCR)
 
-# Remove the binary column from the test dataset
-
-```
-``` {R lasso-coefficients}
+# Coefficients
 coef(cv_lasso, cv_lasso$lambda.min)
 ```
 
@@ -447,9 +440,11 @@ set.seed(42)
 
 # Treat the condition as a factor
 
-train_scaled_df$condition = as.factor(train_scaled_df$condition)
-svm_model <- svm(condition ~ ., data = train_scaled_df, kernel = "polynomial", cost = 100, gamma = 10)
-svm_pred <- predict(svm_model, test_scaled_df[ , !names(test_scaled_df) %in% c('condition')] )
+train_copy <- train_scaled_df
+train_copy$condition = as.factor(train_scaled_df$condition)
+svm_model <- svm(condition ~ ., data = train_copy, kernel = "polynomial", cost = 100, gamma = 10, probability = TRUE)
+svm_pred <- predict(svm_model, 
+                    test_scaled_df[ , !names(test_scaled_df) %in% c('condition')], probability = TRUE)
 
 # Confusion matrix
 table(pred = svm_pred, true = test_scaled_df[, c('condition')])
@@ -459,14 +454,12 @@ model_accuracy = mean(svm_pred == test_scaled_df$condition)
 cat("The accuracy is", model_accuracy, "\n")
 # 
 
-
 # ROC
 test_roc <- test_scaled_df
 test_roc$condition_binary = ifelse(test_roc$condition == "Control", 0, 1)
-pred <- prediction(svm_pred,test_scaled_df$condition)
+pred <- prediction(as.data.frame(attr(svm_pred, "probabilities"))$Case, test_roc$condition_binary)
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
-
 
 # Plot the ROC curve
 plot(perf,  main = "ROC curve")
@@ -490,31 +483,13 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-rm(x, y, model_accuracy, observed_classes, auc_ROCR)
+#rm(x, y, model_accuracy, observed_classes, auc_ROCR)
 
 
 
 
 
 
-
-
-
-
-
-
-
-
-# # # ROC curve
-# perf <- performance(pred = svm_pred,"tpr","fpr")
-# par(pty="s")
-# plot(perf,  main = "ROC curve")
-# # plot the no-prediction line
-# lines(c(0,1),c(0,1),col = "gray", lty = 4 )
-# auc_ROCR <- performance(svm_pred, measure = "auc")
-#   auc_ROCR <- auc_ROCR@y.values[[1]]
-# 
-# cat("The AUC is", auc_ROCR)
 
 ```
 
@@ -524,16 +499,15 @@ rm(x, y, model_accuracy, observed_classes, auc_ROCR)
 ``` {R regression-tree}
 
 ## Regression tree
-rpart.model <- rpart(condition ~ ., data = trainset)
-rpart.pred <- predict(rpart.model, testset[ , !names(testset) 
+rpart_model <- rpart(condition ~ ., data = train_scaled_df)
+rpart_pred <- predict(rpart_model, test_scaled_df[ , !names(test_scaled_df) 
                               %in% c('condition')], type = "class")
 
 # Confusion matrix for rpart
-table(pred = rpart.pred, true = testset[, c('condition')])
+table(pred = rpart_pred, true = test_scaled_df[, c('condition')])
 
 # Accuracy
-observed.classes <- testset$condition
-model_accuracy = mean(rpart.pred == observed.classes)
+model_accuracy = mean(rpart_pred == test_scaled_df$condition)
 cat("The accuracy is", model_accuracy, "\n")
 
 ```
