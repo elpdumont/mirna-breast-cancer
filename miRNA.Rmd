@@ -202,7 +202,9 @@ rm(index, test_index, counts_filt_df, norm_av_filt_df, sampled_names,
 
 ## Identify the miRNAs that can play a role
 
-### Run a paired t-test for each miRNA
+### Method #1: Paired t-test
+
+#### Run the paired t-test
 
 We also ran a multiple-testing correction but after this correction, nothing is significant.
 
@@ -247,7 +249,7 @@ rm(control_df, case_df)
 
 ```
 
-### Pick the miRNA based on p-value and effect size
+#### Pick the miRNA based on p-value and effect size
 
 ``` {R retain-best-mirnas}
 
@@ -272,6 +274,11 @@ print(mirna)
 test_filt_df <- test_df[mirna, ]
 
 ```
+
+### Method #2: DESeq2
+
+
+
 
 ## Predictions using machine-learning
 
@@ -356,7 +363,7 @@ p <- ggscatter(mds, x = "Dim.1", y = "Dim.2",
 
 print(p)
 
-rm(col_names, new_colnames)
+rm(col_names, new_colnames, mds, p)
 
 ```
 
@@ -384,6 +391,7 @@ cv_lasso <- cv.glmnet(x_training, y_training, alpha = 1, family = "binomial")
 
 # Build model with lamnda min
 lasso_model <- glmnet(x_training, y_training, alpha = 1, family = "binomial", lambda = cv_lasso$lambda.min)
+
 
 x_test <- model.matrix(condition ~., test_scaled_df)[,-1]
 probabilities <- lasso_model %>% predict(newx = x_test, type="response")
@@ -426,7 +434,7 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-#rm(x_training, y_training, x_test, model_accuracy, auc_ROCR)
+rm(x_training, y_training, x_test, model_accuracy, auc_ROCR, test_roc, perf, pred, probabilities)
 
 # Coefficients
 coef(cv_lasso, cv_lasso$lambda.min)
@@ -483,12 +491,7 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-#rm(x, y, model_accuracy, observed_classes, auc_ROCR)
-
-
-
-
-
+rm(perf, pred, model_accuracy, auc_ROCR, train_copy, test_roc, pred, perf, probabilities)
 
 
 ```
