@@ -1,0 +1,528 @@
+---
+title: "miRNA analysis  on breast cancer data"
+author: "Emmanuel LP Dumont, Catherine Do, Olivier Loudig"
+date: "January 12, 2021"
+output: 
+  pdf_document: 
+    fig_height: 4
+    fig_width: 4
+
+---
+
+## Import libraries
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(root.dir = 
+                "/Users/emmanuel/miRNA-em/")
+
+```
+
+
+```{R libraries, include = FALSE }
+library(knitr)
+
+library(matrixStats) # for rowMax
+
+# Libraries for MDS
+library(magrittr)
+library(dplyr)
+library(ggpubr)
+
+# Libraries for ML
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(ROCR)
+library(e1071) # svm
+library(rpart) # regression decision trees
+
+```
+
+
+## Import and clean the data
+
+### File import
+
+Import the dataframe of the read count per sample per miRNA from which we replaced the "NA" values with "zeros" and the dataframe of normalized counts (by the total number of RNAs per sample) where each miRNA must have at least a count of 10 raw counts in any sample. Note that Catherine cleaned the dataset to ensure it is balanced between Cases and Controls.
+
+
+```{R import-file}
+counts_df_raw <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
+                       sep = '\t',header = TRUE)
+
+norm_av_df_raw <- read.csv(file = 'raw_data/miRNa_per_million_count_noNA_10x_averaged.txt', 
+                       sep = '\t',header = TRUE)
+
+# Head of the matrix of counts
+head(counts_df_raw[1:3,1:4])
+
+# Head of the matrix of normalized counts where duplicate samples were averaged
+head(norm_av_df_raw[1:3,1:4])
+
+```
+
+### Data cleaning
+
+We clean the matrix of counts. Specifically, we concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
+
+```{R clean-df-counts}
+
+#Create a copy
+counts_df <- counts_df_raw
+
+# Obtain the column names
+colnames <- colnames(counts_df)
+
+# Obtain the names of the samples
+sample_names = colnames[3:ncol(counts_df)]
+
+# Check that every sample is named uniquely
+print("Do we have unique identifiers for miRNAs?:")
+length(unique(sample_names)) == length(sample_names) ## Expect TRUE
+
+# Concatenate the first two columns of the miR dataframe to create 
+# a unique ID per isoform
+counts_df$mir_rna <- paste(counts_df$mir_id, "_", counts_df$mir_seq, sep = "")
+
+# Re-construct a new set of columns
+new_colnames = c('mir_rna', sample_names)
+
+# Update the dataframe
+counts_df = counts_df[,new_colnames]
+
+# Remove the "_count" from the samples' names
+names(counts_df) <- gsub("_count", "", names(counts_df))
+
+# Use the first column as row names
+rownames(counts_df) <- counts_df$mir_rna
+counts_df <- counts_df[,-1]
+
+```
+
+We clean the matrix of normalized counts that were averaged over duplicate samples. Specifically, we concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
+
+``` {R clean-df-averaged}
+
+#Create a copy
+norm_av_df <- norm_av_df_raw
+
+# Obtain the column names
+colnames <- colnames(norm_av_df)
+
+# Obtain the names of the samples
+sample_names = colnames[3:ncol(norm_av_df)]
+
+# Check that every sample is named uniquely
+length(unique(sample_names)) == length(sample_names) ## Expect TRUE
+
+# Concatenate the first two columns of the miR dataframe to create 
+# a unique ID per isoform
+norm_av_df$mir_rna <- paste(norm_av_df$mir_id, "_", 
+                                 norm_av_df$mir_seq, sep = "")
+
+# Re-construct a new set of columns
+new_colnames = c('mir_rna', sample_names)
+
+# Update the dataframe
+norm_av_df = norm_av_df[, new_colnames]
+
+# Use the first column as row names
+rownames(norm_av_df) <- norm_av_df$mir_rna
+norm_av_df <- norm_av_df[,-1]
+
+# Head of the data frame
+head(norm_av_df[1:3,1:4])
+
+```
+
+We delete the raw files to save memory:
+
+``` {R delete-raw}
+rm(counts_df_raw, norm_av_df_raw, colnames, new_colnames, sample_names)
+
+```
+
+## Filter the miRNAs by their coverage
+
+We filter rows where there are not at least ~XX counts for a sample for all miRNAs.
+
+
+```{R filter-coverage}
+
+# # We start by making a copy of the dataframe
+counts_filt_df <- counts_df
+# 
+# # Filter rows by the sum of their counts per miRNA
+min_count <- 10 # Cannot be less than 10.
+counts_filt_df$max_row = apply(counts_df, 1, function(x) max(x))
+
+counts_filt_df = counts_filt_df[counts_filt_df$max_row >= min_count, ] 
+ 
+# Keep the same miRNAs in the normalized and averaged dataset
+norm_av_filt_df <- subset(norm_av_df, 
+                              rownames(norm_av_df) 
+                              %in% rownames(counts_filt_df))
+
+```
+
+
+
+## Split the dataset into training and validation sets.
+
+We randomized the data set and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 224 samples balanced between 112 Controls and 112 Cases.
+
+``` {R split-data}
+
+# set seed to ensure reproducible results
+set.seed(123)
+
+# Obtain the sample names (KXXX) and randomize them
+sampled_names <- sample(unique(str_extract(colnames(norm_av_filt_df), "K\\d+")))
+
+# Split the main dataframe into training and testing sets.
+index <- 1:length(sampled_names)
+test_index <- sample(index, trunc(length(index)/5))
+
+test_samples <- sampled_names[test_index]
+train_samples <- sampled_names[-test_index]
+
+# Create dataframes for testing and training
+test_df = norm_av_filt_df[grepl(paste(test_samples, collapse = "|"), colnames(norm_av_filt_df))]
+train_df = norm_av_filt_df[grepl(paste(train_samples, collapse = "|"), colnames(norm_av_filt_df))]
+
+
+# Delete intermediary data
+rm(index, test_index, counts_filt_df, norm_av_filt_df, sampled_names,
+  test_samples, train_samples)
+
+```
+
+
+## Identify the miRNAs that can play a role
+
+### Run a paired t-test for each miRNA
+
+We also ran a multiple-testing correction but after this correction, nothing is significant.
+
+``` {R t-test, message= FALSE}
+
+# Lists of samples that are "Control"  and  "Case"
+control_df = train_df[grepl("Control", colnames(train_df))]
+case_df = train_df[grepl("Case", colnames(train_df))]
+
+# Create a column with the row names
+train_df$mirna = rownames(train_df)
+
+# Compute the  p-value of a paired t-test for each miRNA
+suppressWarnings(train_df$unadjusted_p_value <- apply(train_df, 1,
+                              function(x) wilcox.test(
+                                as.numeric(control_df[x['mirna'], ]),
+                                as.numeric(case_df[x['mirna'], ]),
+                                paired = TRUE,
+                                alternative = "two.sided")$p.value
+                              )
+)
+
+train_df$mean_control <- apply(train_df, 1,
+                              function(x) mean( 
+                                as.numeric( control_df[x['mirna'], ] ), 
+                                na.rm = FALSE ) )
+
+train_df$mean_case <- apply(train_df, 1,
+                              function(x) mean( 
+                                as.numeric(case_df[x['mirna'], ]), 
+                                na.rm = FALSE ))
+
+train_df$effect_size <- train_df$mean_case / train_df$mean_control
+                              
+# Correct for multiple testing using Benjamini & Hochberg 
+# criteria (commented because not used)
+#norm_av_filt_df$adjusted_p_value <- 
+#  p.adjust(norm_av_filt_df$unadjusted_p_value, method = "BH")
+
+# Delete intermediary files
+rm(control_df, case_df)
+
+```
+
+### Pick the miRNA based on p-value and effect size
+
+``` {R retain-best-mirnas}
+
+# Parameters for picking the miRNAss
+max_nb_mirna <- 10
+min_effect_size = 2.5
+
+train_filt_df <- train_df
+
+train_filt_df = train_filt_df[train_filt_df$effect_size > min_effect_size | 
+                            train_filt_df$effect_size < 1 / min_effect_size, ]
+
+train_filt_df <- train_filt_df[order(train_filt_df$unadjusted_p_value), 
+                             ][1:min(max_nb_mirna, nrow(train_filt_df)), ]
+
+mirna <- rownames(train_filt_df)
+
+print("The model will pick among the following mirna")
+print(mirna)
+
+# Create the equivalent dataset for testing
+test_filt_df <- test_df[mirna, ]
+
+```
+
+## Predictions using machine-learning
+
+### Scale the parameters
+
+For each miRNA, we normalize by usign the formula $(x-\mu)/\sigma$ where $\mu$ is the meann of all samples for a given miRNA and where $\sigma$ is the standard deviation.
+
+``` {R scale-params}
+
+# Get rid of columns we do not need in the training dataset
+tmp <- train_filt_df
+tmp = tmp[, !names(tmp) %in% 
+                  c('mirna', 'unadjusted_p_value', 'adjusted_p_value', 
+                    'mean_control', 'mean_case', 'effect_size')]
+
+# Transpose data frame
+train_transposed_df <- as.data.frame(t(tmp))
+test_transposed_df <- as.data.frame(t(test_filt_df))
+
+# Apply scale function
+train_scaled_df <- as.data.frame(apply(train_transposed_df, 2, scale))
+rownames(train_scaled_df) = rownames(train_transposed_df)
+test_scaled_df <- as.data.frame(apply(test_transposed_df, 2, scale))
+rownames(test_scaled_df) = rownames(test_transposed_df)
+
+
+rm(tmp, train_transposed_df, test_transposed_df)
+
+```
+
+### Visualize the data using multi-dimensional scaling on the training dataset
+
+``` {R visualize-results}
+
+# Gather names of columns before manipulation
+col_names <- colnames(train_scaled_df)
+
+# Create a column with the samples names
+train_scaled_df$sample = rownames(train_scaled_df)
+test_scaled_df$sample = rownames(test_scaled_df)
+
+# Function to figure out if the sample is a "Control" or a "Sample"
+sample_condition <- function(x) {
+  if ( grepl('Case', x) ) {
+    answer = "Case"
+  } else {
+      answer = "Control"
+  } 
+  return (answer)}
+
+# Apply function to create a new column
+train_scaled_df$condition = apply(train_scaled_df['sample'], 1, sample_condition)
+test_scaled_df$condition = apply(test_scaled_df['sample'], 1, sample_condition)
+
+
+# New column names (re-ordered)
+new_colnames = c('condition', col_names)
+train_scaled_df = train_scaled_df[, new_colnames]
+test_scaled_df = test_scaled_df[, !colnames(test_scaled_df) %in% 'sample']
+
+# Check the data type of the data frame
+# sapply(for_model_df_t, class) 
+
+# Create MDS dataset in 2 dimensions
+mds <- train_scaled_df %>%
+  dist() %>%
+  cmdscale() %>%
+  as_tibble()
+colnames(mds) <- c("Dim.1", "Dim.2")
+# Add the condition to the dataframe
+mds$condition <- train_scaled_df$condition
+mds$condition = as.factor(mds$condition)
+
+# Plot MDS for all data
+p <- ggscatter(mds, x = "Dim.1", y = "Dim.2",
+        size = 2,
+        alpha = 0.5,
+        color = 'condition',
+        palette =  c("#00AFBB", "#FC4E07"),
+        repel = TRUE
+        )
+
+print(p)
+
+rm(col_names, new_colnames)
+
+```
+
+### Classification using lasso logistic regression
+
+Our goal is to select as few variables as possible (because of experimental constraints). Therefore, we run a penalized logistic regression using the lasso regression. In this regression, the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model. The
+
+
+``` {R lasso}
+
+
+# Dumy code categorical predictor variables
+x <- model.matrix(condition~., train_scaled_df)[,-1]
+# Convert the outcome (class) to a numerical variable
+y <- ifelse(train_scaled_df$condition == "Case", 1, 0)
+
+
+cv_lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+# Fit the final model on the training data
+model <- glmnet(x, y, alpha = 1, family = "binomial",
+                lambda = cv_lasso$lambda.min)
+
+# Display regression coefficients
+#coef(model)
+
+# Display binomial deviance
+plot(cv_lasso)
+#coef(cv_lasso, cv_lasso$lambda.1se)
+
+```
+
+We evaluate the model with accuracy and an ROC curve.
+
+``` {R roc}
+
+# Make predictions on the testing data (DO NOT DO! - that was just a test)
+# lasso_model <- glmnet(x, y, alpha = 1, family = "binomial",
+#                       lambda = cv_lasso$lambda.min)
+# x.test <- model.matrix(condition ~., train.data)[,-1]
+# probabilities <- lasso_model %>% predict(newx = x.test, type="response")
+# predicted.classes <- ifelse(probabilities > 0.5, "Case", "Control")
+# observed.classes <- train.data$condition
+# model_accuracy = mean(predicted.classes == observed.classes)
+# cat("The accuracy is", model_accuracy, "\n")
+# train.data$condition_binary = ifelse(train.data$condition == "Control", 0, 1)
+# pred <- prediction(probabilities,train.data$condition_binary)
+# perf <- performance(pred,"tpr","fpr")
+# par(pty="s")
+#####################
+
+
+# Make predictions on the test data
+
+lasso_model <- glmnet(x, y, alpha = 1, family = "binomial",
+                      lambda = cv_lasso$lambda.min)
+
+x_test <- model.matrix(condition ~., test_scaled_df)[,-1]
+probabilities <- lasso_model %>% predict(newx = x_test, type="response")
+predicted.classes <- ifelse(probabilities > 0.5, "Case", "Control")
+
+# Model accuracy
+observed.classes <- test_scaled_df$condition
+model_accuracy = mean(predicted.classes == observed.classes)
+cat("The accuracy is", model_accuracy, "\n")
+
+# ROC
+test_scaled_df$condition_binary = ifelse(test_scaled_df$condition == "Control", 0, 1)
+pred <- prediction(probabilities,test_scaled_df$condition_binary)
+perf <- performance(pred,"tpr","fpr")
+par(pty="s")
+
+
+# Plot the ROC curve
+plot(perf,  main = "ROC curve")
+# plot the no-prediction line
+lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+auc_ROCR <- performance(pred, measure = "auc")
+  auc_ROCR <- auc_ROCR@y.values[[1]]
+
+cat("The AUC is", auc_ROCR)  
+
+# Regression parameters  
+#coef(cv_lasso, cv_lasso$lambda.min)
+
+
+# precision/recall curve (x-axis: recall, y-axis: precision)
+perf <- performance(pred, "prec", "rec")
+plot(perf)
+
+# sensitivity/specificity curve (x-axis: specificity,
+# y-axis: sensitivity)
+perf <- performance(pred, "sens", "spec")
+plot(perf)
+
+rm(x, y)
+
+```
+``` {R lasso-coefficients}
+coef(cv_lasso, cv_lasso$lambda.min)
+```
+
+### Classification using support vector machines
+
+``` {R svm}
+
+set.seed(42)
+
+# Create a column 
+scaled.svm <- scaled_df
+rows <- sample(nrow(scaled.svm))
+scaled.svm = scaled.svm[rows, ]
+
+scaled.svm$condition = as.factor(scaled.svm$condition)
+
+# SVM
+
+index <- 1:nrow(scaled.svm)
+testindex <- sample(index, trunc(length(index)/5))
+testset <- scaled.svm[testindex,  ]
+trainset <- scaled.svm[-testindex, ]
+
+svm.model <- svm(condition ~ ., data = trainset, kernel = "linear", cost = 100, gamma = 1)
+svm.pred <- predict(svm.model, testset[ , !names(testset) %in% c('condition')] )
+
+# Confusion matrix
+table(pred = svm.pred, true = testset[, c('condition')])
+
+# Model accuracy
+observed.classes <- testset$condition
+model_accuracy = mean(svm.pred == observed.classes)
+cat("The accuracy is", model_accuracy, "\n")
+# 
+# # ROC curve
+# perf <- performance(pred = svm.pred,"tpr","fpr")
+# par(pty="s")
+# plot(perf,  main = "ROC curve")
+# # plot the no-prediction line
+# lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+# auc_ROCR <- performance(svm.pred, measure = "auc")
+#   auc_ROCR <- auc_ROCR@y.values[[1]]
+# 
+# cat("The AUC is", auc_ROCR)  
+
+```
+
+
+### Classification using regression trees
+
+``` {R regression-tree}
+
+## Regression tree
+rpart.model <- rpart(condition ~ ., data = trainset)
+rpart.pred <- predict(rpart.model, testset[ , !names(testset) 
+                              %in% c('condition')], type = "class")
+
+# Confusion matrix for rpart
+table(pred = rpart.pred, true = testset[, c('condition')])
+
+# Accuracy
+observed.classes <- testset$condition
+model_accuracy = mean(rpart.pred == observed.classes)
+cat("The accuracy is", model_accuracy, "\n")
+
+```
+
+
+### Classification using Naive Bayes
+
+TBD.
