@@ -252,8 +252,8 @@ rm(control_df, case_df)
 ``` {R retain-best-mirnas}
 
 # Parameters for picking the miRNAss
-max_nb_mirna <- 10
-min_effect_size = 2.5
+max_nb_mirna <- 40
+min_effect_size = 2
 
 train_filt_df <- train_df
 
@@ -367,17 +367,13 @@ Our goal is to select as few variables as possible (because of experimental cons
 
 ``` {R lasso}
 
-
 # Dumy code categorical predictor variables
-x <- model.matrix(condition~., train_scaled_df)[,-1]
+x_training <- model.matrix(condition~., train_scaled_df)[,-1]
 # Convert the outcome (class) to a numerical variable
-y <- ifelse(train_scaled_df$condition == "Case", 1, 0)
+y_training <- ifelse(train_scaled_df$condition == "Case", 1, 0)
 
-
-cv_lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial")
-# Fit the final model on the training data
-model <- glmnet(x, y, alpha = 1, family = "binomial",
-                lambda = cv_lasso$lambda.min)
+# Model
+cv_lasso <- cv.glmnet(x_training, y_training, alpha = 1, family = "binomial")
 
 # Display regression coefficients
 #coef(model)
@@ -392,39 +388,22 @@ We evaluate the model with accuracy and an ROC curve.
 
 ``` {R roc}
 
-# Make predictions on the testing data (DO NOT DO! - that was just a test)
-# lasso_model <- glmnet(x, y, alpha = 1, family = "binomial",
-#                       lambda = cv_lasso$lambda.min)
-# x.test <- model.matrix(condition ~., train.data)[,-1]
-# probabilities <- lasso_model %>% predict(newx = x.test, type="response")
-# predicted.classes <- ifelse(probabilities > 0.5, "Case", "Control")
-# observed.classes <- train.data$condition
-# model_accuracy = mean(predicted.classes == observed.classes)
-# cat("The accuracy is", model_accuracy, "\n")
-# train.data$condition_binary = ifelse(train.data$condition == "Control", 0, 1)
-# pred <- prediction(probabilities,train.data$condition_binary)
-# perf <- performance(pred,"tpr","fpr")
-# par(pty="s")
-#####################
-
-
-# Make predictions on the test data
-
-lasso_model <- glmnet(x, y, alpha = 1, family = "binomial",
-                      lambda = cv_lasso$lambda.min)
+# Build model with lamnda min
+lasso_model <- glmnet(x_training, y_training, alpha = 1, family = "binomial", lambda = cv_lasso$lambda.min)
 
 x_test <- model.matrix(condition ~., test_scaled_df)[,-1]
 probabilities <- lasso_model %>% predict(newx = x_test, type="response")
-predicted.classes <- ifelse(probabilities > 0.5, "Case", "Control")
+predicted_classes <- ifelse(probabilities > 0.5, "Case", "Control")
 
 # Model accuracy
-observed.classes <- test_scaled_df$condition
-model_accuracy = mean(predicted.classes == observed.classes)
+observed_classes <- test_scaled_df$condition
+model_accuracy = mean(predicted_classes == observed_classes)
 cat("The accuracy is", model_accuracy, "\n")
 
 # ROC
-test_scaled_df$condition_binary = ifelse(test_scaled_df$condition == "Control", 0, 1)
-pred <- prediction(probabilities,test_scaled_df$condition_binary)
+test_roc <- test_scaled_df
+test_roc$condition_binary = ifelse(test_roc$condition == "Control", 0, 1)
+pred <- prediction(probabilities,test_roc$condition_binary)
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
@@ -451,7 +430,9 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-rm(x, y)
+rm(x_training, y_training, x_test, model_accuracy, observed_classes, auc_ROCR)
+
+# Remove the binary column from the test dataset
 
 ```
 ``` {R lasso-coefficients}
@@ -464,41 +445,76 @@ coef(cv_lasso, cv_lasso$lambda.min)
 
 set.seed(42)
 
-# Create a column 
-scaled.svm <- scaled_df
-rows <- sample(nrow(scaled.svm))
-scaled.svm = scaled.svm[rows, ]
+# Treat the condition as a factor
 
-scaled.svm$condition = as.factor(scaled.svm$condition)
-
-# SVM
-
-index <- 1:nrow(scaled.svm)
-testindex <- sample(index, trunc(length(index)/5))
-testset <- scaled.svm[testindex,  ]
-trainset <- scaled.svm[-testindex, ]
-
-svm.model <- svm(condition ~ ., data = trainset, kernel = "linear", cost = 100, gamma = 1)
-svm.pred <- predict(svm.model, testset[ , !names(testset) %in% c('condition')] )
+train_scaled_df$condition = as.factor(train_scaled_df$condition)
+svm_model <- svm(condition ~ ., data = train_scaled_df, kernel = "polynomial", cost = 100, gamma = 10)
+svm_pred <- predict(svm_model, test_scaled_df[ , !names(test_scaled_df) %in% c('condition')] )
 
 # Confusion matrix
-table(pred = svm.pred, true = testset[, c('condition')])
+table(pred = svm_pred, true = test_scaled_df[, c('condition')])
 
 # Model accuracy
-observed.classes <- testset$condition
-model_accuracy = mean(svm.pred == observed.classes)
+model_accuracy = mean(svm_pred == test_scaled_df$condition)
 cat("The accuracy is", model_accuracy, "\n")
 # 
-# # ROC curve
-# perf <- performance(pred = svm.pred,"tpr","fpr")
+
+
+# ROC
+test_roc <- test_scaled_df
+test_roc$condition_binary = ifelse(test_roc$condition == "Control", 0, 1)
+pred <- prediction(svm_pred,test_scaled_df$condition)
+perf <- performance(pred,"tpr","fpr")
+par(pty="s")
+
+
+# Plot the ROC curve
+plot(perf,  main = "ROC curve")
+# plot the no-prediction line
+lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+auc_ROCR <- performance(pred, measure = "auc")
+  auc_ROCR <- auc_ROCR@y.values[[1]]
+
+cat("The AUC is", auc_ROCR)  
+
+# Regression parameters  
+#coef(cv_lasso, cv_lasso$lambda.min)
+
+
+# precision/recall curve (x-axis: recall, y-axis: precision)
+perf <- performance(pred, "prec", "rec")
+plot(perf)
+
+# sensitivity/specificity curve (x-axis: specificity,
+# y-axis: sensitivity)
+perf <- performance(pred, "sens", "spec")
+plot(perf)
+
+rm(x, y, model_accuracy, observed_classes, auc_ROCR)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # # ROC curve
+# perf <- performance(pred = svm_pred,"tpr","fpr")
 # par(pty="s")
 # plot(perf,  main = "ROC curve")
 # # plot the no-prediction line
 # lines(c(0,1),c(0,1),col = "gray", lty = 4 )
-# auc_ROCR <- performance(svm.pred, measure = "auc")
+# auc_ROCR <- performance(svm_pred, measure = "auc")
 #   auc_ROCR <- auc_ROCR@y.values[[1]]
 # 
-# cat("The AUC is", auc_ROCR)  
+# cat("The AUC is", auc_ROCR)
 
 ```
 
