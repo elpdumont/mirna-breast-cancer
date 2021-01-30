@@ -70,7 +70,9 @@ head(norm_av_df_raw[1:3,1:4])
 
 ### Data cleaning
 
-We clean the matrix of counts. Specifically, we concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
+#### Matrix of counts.
+
+We concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
 
 ```{R clean-df-counts}
 
@@ -104,9 +106,17 @@ names(counts_df) <- gsub("_count", "", names(counts_df))
 rownames(counts_df) <- counts_df$mir_rna
 counts_df <- counts_df[,-1]
 
+# minimize all caps (used in DESEq2)
+tmp <- colnames(counts_df)
+tmp = tolower(tmp)
+colnames(counts_df) = tmp
+rm(tmp)
+
 ```
 
-We clean the matrix of normalized counts that were averaged over duplicate samples. Specifically, we concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
+#### Matrix of normalized counts (prepared by Catherine)
+
+We concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
 
 ``` {R clean-df-averaged}
 
@@ -142,7 +152,16 @@ head(norm_av_df[1:3,1:4])
 
 ```
 
-We clean the sample info file (Run only planning on using DESeq2)
+We delete the raw files to save memory:
+
+``` {R delete-raw}
+rm(counts_df_raw, norm_av_df_raw, colnames, new_colnames, sample_names)
+
+```
+
+
+#### Sample info file (run only if using DESeq2)
+
 
 ```{R sample-info}
 
@@ -155,34 +174,60 @@ sample_info = sample_info[,c('subsample','status')]
 # Rename the columns
 colnames(sample_info) = c('sample','condition')
 
+# Remove the duplicate samples
+sample_info =  sample_info[!duplicated(sample_info$sample),]
+
 # Remove the rows where the condition is neither 'Case' or 'Control'
 sample_info = subset(sample_info, condition=="Case" | condition=="Control")
 
-# The sample_info file has not the same info as the miRNA dataframe. We create a new file
-meta = data.frame(cases=colnames(counts_df))
-rownames(meta) <- colnames(counts_df)
+# Lower case 
+sample_info$sample = tolower(sample_info$sample)
 
-# Obtain the "case' vs 'control' value for each sample
-meta$condition <- apply(meta, 1,
-                            function(x)  sample_info[sample_info$sample==x[1],]$condition[1])
+# Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017Y_Case"
+# We need to keep the pairs of samples in the same training set
+sample_info$new_name <- paste(str_extract(
+        sample_info$sample, "k.*"), "_", 
+        sample_info$condition, sep = "")
 
-# Delete the now useless dataframe
-#rm(sample_info)
+# Remove a few samples that would duplicate new names
+sample_info = sample_info[!sample_info$sample %in% 
+                            c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2', 
+                              'ol_srna_tmm17_k604b2') , 
+                          ]
 
-# Safety check (TRUE is expected)
-table(rownames(meta) == meta$cases)
+# length(sample_info$sample) == length(unique(sample_info$sample))
+# length(sample_info$new_name) == length(unique(sample_info$new_name))
+# data.frame(table(sample_info$new_name))
 
-# Safety check ("Control" and "Case" are expected)
-unique(meta$condition)
+```
+
+Now, we remove from the matrix of counts all samples that are not in the sample_info file.
+
+``` {r rename-count-df}
+
+# Keep the samples which we identified as "Case" or "Control"
+counts_clean_df <- counts_df[names(counts_df) %in% sample_info$sample]
+
+# Rename columns of the count matrix.
+tmp <- as.data.frame(colnames(counts_clean_df))
+tmp$new_name = apply(tmp, 1, function(x) sample_info[sample_info$sample == x, 'new_name'])
+
+colnames(counts_clean_df) = tmp$new_name
+
+# Rename into counts_df
+rm(tmp, counts_df)
+counts_df <- counts_clean_df
+rm(counts_clean_df)
+
+# Clean the sample info file
+sample_info = sample_info[, c('new_name', 'condition')]
+colnames(sample_info) = c('sample', 'condition')
+
+# Remove the samples that were in the sample info file but not the matrix of counts.
+sample_info = sample_info[sample_info$sample %in% colnames(counts_df), ]
 
 ```
 
-We delete the raw files to save memory:
-
-``` {R delete-raw}
-rm(counts_df_raw, norm_av_df_raw, colnames, new_colnames, sample_names)
-
-```
 
 ## Filter the miRNAs by their coverage
 
@@ -193,13 +238,17 @@ We filter rows where there are not at least ~XX counts for a sample for all miRN
 
 # # We start by making a copy of the dataframe
 counts_filt_df <- counts_df
-# 
-# # Filter rows by the sum of their counts per miRNA
-min_count <- 10 # Cannot be less than 10.
-counts_filt_df$max_row = apply(counts_df, 1, function(x) max(x))
 
+# Filter rows by the max of their counts per miRNA
+min_count <- 10 # Cannot be less than 10.
+col_names <- colnames(counts_filt_df)
+counts_filt_df$max_row = apply(counts_df, 1, function(x) max(x))
 counts_filt_df = counts_filt_df[counts_filt_df$max_row >= min_count, ] 
- 
+counts_filt_df = counts_filt_df[ , col_names]
+
+# Add a +1 tous les cells to avoid an error with DESeq2
+counts_filt_df = counts_filt_df + 1
+
 # Keep the same miRNAs in the normalized and averaged dataset
 norm_av_filt_df <- subset(norm_av_df, 
                               rownames(norm_av_df) 
@@ -211,7 +260,9 @@ norm_av_filt_df <- subset(norm_av_df,
 
 ## Split the dataset into training and validation sets.
 
-We randomized the data set and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 224 samples balanced between 112 Controls and 112 Cases.
+### Run this section if you do not use DESeq2 
+
+We randomized the normalized dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 224 samples balanced between 112 Controls and 112 Cases.
 
 ``` {R split-data}
 
@@ -238,6 +289,61 @@ rm(index, test_index, counts_filt_df, norm_av_filt_df, sampled_names,
   test_samples, train_samples)
 
 ```
+
+### Run this section if you use DESeq2
+
+Here we split the the matrix of raw counts.
+
+```{R DESeq2-analysis}
+
+## DESeq2 Analysis
+miR_dds <- DESeqDataSetFromMatrix(counts_filt_df, colData = sample_info, design = ~ condition)
+miR_dds$condition <- relevel(miR_dds$condition, ref = "Control")
+miR_dds <- DESeq(miR_dds)
+resultsNames(miR_dds) # list the coefficients
+```
+
+``` {R DESeqe2-results}
+## DESeq2 results
+miR_res <- results(miR_dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
+summary(miR_res)
+plotMA( miR_res, ylim = c(-1, 1) )
+
+miR_res_df <- as.data.frame(miR_res)
+## Function to grab results
+get_upregulated <- function(df){
+    key <- intersect(rownames(df)[which(df$log2FoldChange>=1)],
+              rownames(df)[which(df$pvalue<=0.05)])
+    
+    results <- as.data.frame((df)[which(rownames(df) %in% key),])
+    return(results)
+  }
+get_downregulated <- function(df){
+  key <- intersect(rownames(df)[which(df$log2FoldChange<=-1)],
+            rownames(df)[which(df$pvalue<=0.05)])
+  
+  results <- as.data.frame((df)[which(rownames(df) %in% key),])
+  return(results)
+}
+miR_upreg <- get_upregulated(miR_res)
+miR_downreg <- get_downregulated(miR_res)
+## Write results for plots and analysis
+miR_counts <- counts(miR_dds, normalized = T)
+
+# Create a directory where to write the results
+dir.create("results/")
+
+# Write the results
+write.table(miR_counts, "results/miR_norm.counts.txt", quote = F, sep = "\t")
+miR_upreg$miRNA_id <- rownames(miR_upreg)
+miR_downreg$miRNA_id <- rownames(miR_downreg)
+miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
+miR_downreg <- miR_downreg[,c(8,1,2,3,4,5,6,7)]
+write.table(miR_upreg, "results/miR_upreg.txt", quote = F, sep = "\t", row.names = F)
+write.table(miR_downreg, "results/miR_downreg.txt", quote = F, sep = "\t", row.names = F)
+
+```
+
 
 
 ## Identify the miRNAs that can play a role
