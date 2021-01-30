@@ -264,7 +264,7 @@ norm_av_filt_df <- subset(norm_av_df,
 
 We randomized the normalized dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 224 samples balanced between 112 Controls and 112 Cases.
 
-``` {R split-data}
+``` {R split-data-catherine}
 
 # set seed to ensure reproducible results
 set.seed(123)
@@ -285,7 +285,7 @@ train_df = norm_av_filt_df[grepl(paste(train_samples, collapse = "|"), colnames(
 
 
 # Delete intermediary data
-rm(index, test_index, counts_filt_df, norm_av_filt_df, sampled_names,
+rm(index, test_index, norm_av_filt_df, sampled_names,
   test_samples, train_samples)
 
 ```
@@ -294,55 +294,26 @@ rm(index, test_index, counts_filt_df, norm_av_filt_df, sampled_names,
 
 Here we split the the matrix of raw counts.
 
-```{R DESeq2-analysis}
+``` {R split-data-deseq2}
 
-## DESeq2 Analysis
-miR_dds <- DESeqDataSetFromMatrix(counts_filt_df, colData = sample_info, design = ~ condition)
-miR_dds$condition <- relevel(miR_dds$condition, ref = "Control")
-miR_dds <- DESeq(miR_dds)
-resultsNames(miR_dds) # list the coefficients
-```
+# set seed to ensure reproducible results
+set.seed(123)
 
-``` {R DESeqe2-results}
-## DESeq2 results
-miR_res <- results(miR_dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
-summary(miR_res)
-plotMA( miR_res, ylim = c(-1, 1) )
+sampled_counts_df <- counts_filt_df[, sample(colnames(counts_filt_df))]
 
-miR_res_df <- as.data.frame(miR_res)
-## Function to grab results
-get_upregulated <- function(df){
-    key <- intersect(rownames(df)[which(df$log2FoldChange>=1)],
-              rownames(df)[which(df$pvalue<=0.05)])
-    
-    results <- as.data.frame((df)[which(rownames(df) %in% key),])
-    return(results)
-  }
-get_downregulated <- function(df){
-  key <- intersect(rownames(df)[which(df$log2FoldChange<=-1)],
-            rownames(df)[which(df$pvalue<=0.05)])
-  
-  results <- as.data.frame((df)[which(rownames(df) %in% key),])
-  return(results)
-}
-miR_upreg <- get_upregulated(miR_res)
-miR_downreg <- get_downregulated(miR_res)
-## Write results for plots and analysis
-miR_counts <- counts(miR_dds, normalized = T)
+# Split the main dataframe into training and testing sets.
+index <- 1:length(colnames(sampled_counts_df))
+test_index <- sample(index, trunc(length(index)/5))
 
-# Create a directory where to write the results
-dir.create("results/")
+test_df <- sampled_counts_df[test_index]
+train_df <- sampled_counts_df[-test_index]
 
-# Write the results
-write.table(miR_counts, "results/miR_norm.counts.txt", quote = F, sep = "\t")
-miR_upreg$miRNA_id <- rownames(miR_upreg)
-miR_downreg$miRNA_id <- rownames(miR_downreg)
-miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
-miR_downreg <- miR_downreg[,c(8,1,2,3,4,5,6,7)]
-write.table(miR_upreg, "results/miR_upreg.txt", quote = F, sep = "\t", row.names = F)
-write.table(miR_downreg, "results/miR_downreg.txt", quote = F, sep = "\t", row.names = F)
+# Create a sample info file for the training dataset 
+sample_info_train <- sample_info[sample_info$sample %in% colnames(train_df), ]
+
 
 ```
+
 
 
 
@@ -423,6 +394,54 @@ test_filt_df <- test_df[mirna, ]
 
 ### Method #2: DESeq2
 
+
+```{R DESeq2-analysis}
+
+## DESeq2 Analysis
+miR_dds <- DESeqDataSetFromMatrix(train_df, colData = sample_info_train, design = ~ condition)
+miR_dds$condition <- relevel(miR_dds$condition, ref = "Control")
+miR_dds <- DESeq(miR_dds)
+resultsNames(miR_dds) # list the coefficients
+
+## DESeq2 results
+miR_res <- results(miR_dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
+summary(miR_res)
+plotMA( miR_res, ylim = c(-1, 1) )
+
+miR_res_df <- as.data.frame(miR_res)
+## Function to grab results
+get_upregulated <- function(df){
+    key <- intersect(rownames(df)[which(df$log2FoldChange>=1)],
+              rownames(df)[which(df$pvalue<=0.05)])
+    
+    results <- as.data.frame((df)[which(rownames(df) %in% key),])
+    return(results)
+  }
+get_downregulated <- function(df){
+  key <- intersect(rownames(df)[which(df$log2FoldChange<=-1)],
+            rownames(df)[which(df$pvalue<=0.05)])
+  
+  results <- as.data.frame((df)[which(rownames(df) %in% key),])
+  return(results)
+}
+miR_upreg <- get_upregulated(miR_res)
+miR_downreg <- get_downregulated(miR_res)
+## Write results for plots and analysis
+miR_counts <- counts(miR_dds, normalized = T)
+
+# Create a directory where to write the results
+dir.create("results/")
+
+# Write the results
+write.table(miR_counts, "results/miR_norm.counts.txt", quote = F, sep = "\t")
+miR_upreg$miRNA_id <- rownames(miR_upreg)
+miR_downreg$miRNA_id <- rownames(miR_downreg)
+miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
+miR_downreg <- miR_downreg[,c(8,1,2,3,4,5,6,7)]
+write.table(miR_upreg, "results/miR_upreg.txt", quote = F, sep = "\t", row.names = F)
+write.table(miR_downreg, "results/miR_downreg.txt", quote = F, sep = "\t", row.names = F)
+
+```
 
 
 

@@ -1,6 +1,9 @@
 # Raw data
 raw_data/*
 
+# Results
+results/*
+
 # History files
 .Rhistory
 .Rapp.history
