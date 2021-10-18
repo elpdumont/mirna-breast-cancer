@@ -5,12 +5,19 @@ output: rmarkdown::github_document
 
 ---
 
-# Introduction to the problem
+## Introduction to the problem
 
-In this 
+Like many areas in genomics (the study of the genome sequence) and transcriptomics (the study of the genome expression), we look at a high-dimensionality problem where the number of features is much larger than the number of samples in the dataset. 
+
+In this particular case, our dataset comes from the expression count of micro-RNAs ("miRNAs") that were extracted from formalin-fixed paraffin-embedded tissue specimens. All tissue specimens come from women's breast diagnosed with cancer. "Control" tissues have non-metastatic breast cancer while "Case" tissues have metastatic breast cancer. Tissues were paired in (Case, Control) when the cancers had the same tumor grade and came from women with the age. miRNAs are single-stranded non-coding RNA with about two dozen nucleotides.
+
+The dataset comprises of 290 samples (half comes from healthy women and half come women diagnosed with breast cancer) and ~635k miRNAs were profiled. The goal of this project is to find a set of miRNAs whose expression levels can be used to differentiate between healthy patients and patients with breast cancer.
+
+The work is divided in two steps:
+1. Clustering the miRNAs 
+2. Apply machine-learning models on representatives of the clusters.
 
 
-Import libraries
 
 ```{r, initialization, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -23,7 +30,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{R libraries, include = FALSE }
 library(knitr)
 
-# For DESeq2 (not used in final analysis)
+# For DESeq2
 library(DESeq2)
 library(IHW)
 library(data.table)
@@ -46,185 +53,125 @@ library(rpart) # regression decision trees
 ```
 
 
-## Import and clean the data
+## Import, clean the data, and filter the data based on coverage
 
-### File import
+### Import the matrices of miRNA expression counts per sample
 
-Import the dataframe of the read count per sample per miRNA from which we replaced the "NA" values with "zeros" and the dataframe of normalized counts (by the total number of RNAs per sample) where each miRNA must have at least a count of 10 raw counts in any sample. Note that Catherine cleaned the dataset to ensure it is balanced between Cases and Controls.
+In this file, the NAs were replaced with zeros.
+
+After importing, we concatenate the first two columns (mir_id and mir_seq) to have a unique identifier per miRNA. We then rename  each row with the miRNA new name.
+
 
 
 ```{R import-file}
-counts_df_raw <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
-                       sep = '\t',header = TRUE)
 
-norm_av_df_raw <- read.csv(file = 'raw_data/miRNa_per_million_count_noNA_10x_averaged.txt', 
+# Raw counts where NAs were replaced with zeros
+rawCounts <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
                        sep = '\t',header = TRUE)
 
 # Head of the matrix of counts
-head(counts_df_raw[1:3,1:4])
+head(rawCounts[1:3,1:4])
 
-# Head of the matrix of normalized counts where duplicate samples were averaged
-head(norm_av_df_raw[1:3,1:4])
+# minimize all caps (better when using the package DESEq2)
+colnames(rawCounts) = tolower(colnames(rawCounts))
 
-```
-
-### Data cleaning
-
-#### Matrix of counts.
-
-We concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
-
-```{R clean-df-counts}
-
-#Create a copy
-counts_df <- counts_df_raw
-
-# Obtain the column names
-colnames <- colnames(counts_df)
-
-# Obtain the names of the samples
-sample_names = colnames[3:ncol(counts_df)]
+# Obtain the sample names (The first two columns are the miRNA ID and its sequence)
+sampleNames <- colnames(rawCounts)[3:ncol(rawCounts)]
 
 # Check that every sample is named uniquely
-print("Do we have unique identifiers for miRNAs?:")
-length(unique(sample_names)) == length(sample_names) ## Expect TRUE
+if (length(unique(sampleNames)) != length(sampleNames)){
+  print("CHECK. There are duplicate names")
+}
 
 # Concatenate the first two columns of the miR dataframe to create 
 # a unique ID per isoform
-counts_df$mir_rna <- paste(counts_df$mir_id, "_", counts_df$mir_seq, sep = "")
+rawCounts$mir_rna <- paste(rawCounts$mir_id, "_", rawCounts$mir_seq, sep = "")
 
 # Re-construct a new set of columns
-new_colnames = c('mir_rna', sample_names)
-
-# Update the dataframe
-counts_df = counts_df[,new_colnames]
+rawCounts = rawCounts[, c('mir_rna', sampleNames)]
 
 # Remove the "_count" from the samples' names
-names(counts_df) <- gsub("_count", "", names(counts_df))
+names(rawCounts) <- gsub("_count", "", names(rawCounts))
 
 # Use the first column as row names
-rownames(counts_df) <- counts_df$mir_rna
-counts_df <- counts_df[,-1]
+rownames(rawCounts) <- rawCounts$mir_rna
+rawCounts <- rawCounts[,-1]
 
-# minimize all caps (used in DESEq2)
-tmp <- colnames(counts_df)
-tmp = tolower(tmp)
-colnames(counts_df) = tmp
-rm(tmp)
+# Delete variables.
+rm(sampleNames)
 
-```
+# Head of the matrix of counts
+head(rawCounts[1:3,1:4])
 
-#### Matrix of normalized counts (prepared by Catherine)
+nbSamplesRaw <- ncol(rawCounts)
+nbmiRNAsRaw <- nrow(rawCounts)
 
-We concatenate the mir_id and mir_seq to have a unique identifier per miRNA and we name each row with the miRNA new name.
-
-``` {R clean-df-averaged}
-
-#Create a copy
-norm_av_df <- norm_av_df_raw
-
-# Obtain the column names
-colnames <- colnames(norm_av_df)
-
-# Obtain the names of the samples
-sample_names = colnames[3:ncol(norm_av_df)]
-
-# Check that every sample is named uniquely
-length(unique(sample_names)) == length(sample_names) ## Expect TRUE
-
-# Concatenate the first two columns of the miR dataframe to create 
-# a unique ID per isoform
-norm_av_df$mir_rna <- paste(norm_av_df$mir_id, "_", 
-                                 norm_av_df$mir_seq, sep = "")
-
-# Re-construct a new set of columns
-new_colnames = c('mir_rna', sample_names)
-
-# Update the dataframe
-norm_av_df = norm_av_df[, new_colnames]
-
-# Use the first column as row names
-rownames(norm_av_df) <- norm_av_df$mir_rna
-norm_av_df <- norm_av_df[,-1]
-
-# Head of the data frame
-head(norm_av_df[1:3,1:4])
-
-```
-
-We delete the raw files to save memory:
-
-``` {R delete-raw}
-rm(counts_df_raw, norm_av_df_raw, colnames, new_colnames, sample_names)
 
 ```
 
 
-#### Sample info file (run only if using DESeq2)
+
+### Import the sample info file
+
+In the matrix above, we do not know if a sample is "Control" (healthy) or "Case" (Breast Cancer). The sample info file will give us this information. However, it must be clean to avoid discrepancies.
 
 
 ```{R sample-info}
 
 # Importe file
-sample_info <- read.csv(file = 'raw_data/sample_info.csv', header = TRUE)
+sampleInfo <- read.csv(file = 'raw_data/sample_info.csv', header = TRUE)
 
 # Keep the columns of interest
-sample_info = sample_info[,c('subsample','status')]
+sampleInfo = sampleInfo[,c('subsample','status')]
 
 # Rename the columns
-colnames(sample_info) = c('sample','condition')
+colnames(sampleInfo) = c('sample','condition')
 
 # Remove the duplicate samples
-sample_info =  sample_info[!duplicated(sample_info$sample),]
+sampleInfo =  sampleInfo[!duplicated(sampleInfo$sample),]
 
 # Remove the rows where the condition is neither 'Case' or 'Control'
-sample_info = subset(sample_info, condition=="Case" | condition=="Control")
+sampleInfo = subset(sampleInfo, condition=="Case" | condition=="Control")
 
 # Lower case
-sample_info$sample = tolower(sample_info$sample)
+sampleInfo$sample = tolower(sampleInfo$sample)
 
 # Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017Y_Case"
 # We need to keep the pairs of samples in the same training set
-sample_info$new_name <- paste(str_extract(
-        sample_info$sample, "k.*"), "_",
-        sample_info$condition, sep = "")
+sampleInfo$new_name <- paste(str_extract(
+        sampleInfo$sample, "k.*"), "_",
+        sampleInfo$condition, sep = "")
 
 # Remove a few samples that would duplicate new names
-sample_info = sample_info[!sample_info$sample %in%
+sampleInfo = sampleInfo[!sampleInfo$sample %in%
                             c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
                               'ol_srna_tmm17_k604b2') ,
                           ]
 
-# length(sample_info$sample) == length(unique(sample_info$sample))
-# length(sample_info$new_name) == length(unique(sample_info$new_name))
-# data.frame(table(sample_info$new_name))
-
 ```
 
-Now, we remove from the matrix of counts all samples that are not in the sample_info file.
+Now, we remove from the matrix of counts all samples that are not in the sampleInfo file.  After that, we're left with 216 samples which are 108 pairs of (Case, Control) miRNA profiles.
 
-``` {r rename-count-df}
+
+``` {r rename-samples-in-count-matrix}
 
 # Keep the samples which we identified as "Case" or "Control"
-counts_clean_df <- counts_df[names(counts_df) %in% sample_info$sample]
+rawCountsPaired = rawCounts[names(rawCounts) %in% sampleInfo$sample]
+
 
 # Rename columns of the count matrix.
-tmp <- as.data.frame(colnames(counts_clean_df))
-tmp$new_name = apply(tmp, 1, function(x) sample_info[sample_info$sample == x, 'new_name'])
+tmp <- as.data.frame(colnames(rawCounts))
+tmp$new_name = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sample == x, 'new_name'])
 
-colnames(counts_clean_df) = tmp$new_name
-
-# Rename into counts_df
-rm(tmp, counts_df)
-counts_df <- counts_clean_df
-rm(counts_clean_df)
+colnames(rawCounts) = tmp$new_name
 
 # Clean the sample info file
-sample_info = sample_info[, c('new_name', 'condition')]
-colnames(sample_info) = c('sample', 'condition')
+sampleInfo = sampleInfo[, c('new_name', 'condition')]
+colnames(sampleInfo) = c('sample', 'condition')
 
-# Remove the samples that were in the sample info file but not the matrix of counts.
-sample_info = sample_info[sample_info$sample %in% colnames(counts_df), ]
+
+rm(tmp)
+
 
 ```
 
