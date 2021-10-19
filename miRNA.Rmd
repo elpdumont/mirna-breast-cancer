@@ -113,7 +113,7 @@ nbmiRNAsRaw <- nrow(rawCounts)
 
 ### Import the sample info file
 
-In the matrix above, we do not know if a sample is "Control" (healthy) or "Case" (Breast Cancer). The sample info file will give us this information. However, it must be clean to avoid discrepancies.
+In the matrix above, we do not know if a sample is "Control" (healthy) or "Case" (Breast Cancer). The sample info file will give us this information. 
 
 
 ```{R sample-info}
@@ -150,66 +150,103 @@ sampleInfo = sampleInfo[!sampleInfo$sample %in%
 
 ```
 
-Now, we remove from the matrix of counts all samples that are not in the sampleInfo file.  After that, we're left with 216 samples which are 108 pairs of (Case, Control) miRNA profiles.
+Now, we remove from the matrix of counts all samples that are not in the sampleInfo file.  After that, we're left with 216 samples which are 108 pairs of (Case, Control) miRNA profiles. We're excluding 72 samples from the dataset.
 
 
 ``` {r rename-samples-in-count-matrix}
 
-# Keep the samples which we identified as "Case" or "Control"
+# Keep the samples of the count matrix that are in the sample info file.
 rawCountsPaired = rawCounts[names(rawCounts) %in% sampleInfo$sample]
 
+# Identify the samples that are not paired.
+pairedSamples <- colnames(rawCountsPaired)
+allSamples <- colnames(rawCounts)
+unpairedSamples <- allSamples[!(allSamples %in% pairedSamples)]
+cat("There are", length(unpairedSamples), "excluded from the dataset")
 
 # Rename columns of the count matrix.
-tmp <- as.data.frame(colnames(rawCounts))
+tmp <- as.data.frame(colnames(rawCountsPaired))
 tmp$new_name = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sample == x, 'new_name'])
 
-colnames(rawCounts) = tmp$new_name
+colnames(rawCountsPaired) = tmp$new_name
 
 # Clean the sample info file
 sampleInfo = sampleInfo[, c('new_name', 'condition')]
 colnames(sampleInfo) = c('sample', 'condition')
 
-
 rm(tmp)
-
 
 ```
 
 
-## Filter the miRNAs by their coverage
+### Filter the miRNAs by their coverage and prepare a normalized matrix
 
-We filter rows where there are not at least ~XX counts for a sample for all miRNAs.
+We remove miRNAs that do not show at least 10 counts in one sample. We also remove miRNAs where the count is above the 99% percentile after removing the poorly-expressed miRNAs.
+
+That leaves us with ~28k miRNAs (down from 635k).
 
 
 ```{R filter-coverage}
 
 # # We start by making a copy of the dataframe
-counts_filt_df <- counts_df
+rawCountsPairedCov <- rawCountsPaired
+
+# We save the column names
+columnNames <- colnames(rawCountsPairedCov)
 
 # Filter rows by the max of their counts per miRNA
-min_count <- 10 # Cannot be less than 10.
-col_names <- colnames(counts_filt_df)
-counts_filt_df$max_row = apply(counts_df, 1, function(x) max(x))
-counts_filt_df = counts_filt_df[counts_filt_df$max_row >= min_count, ] 
-counts_filt_df = counts_filt_df[ , col_names]
+minCount <- 10 # Cannot be less than 10.
+
+rawCountsPairedCov$maxRow = apply(rawCountsPairedCov, 1, function(x) max(x))
+
+# Summary of the max number 
+summary(rawCountsPairedCov$maxRow)
+
+
+rawCountsPairedCov = rawCountsPairedCov[rawCountsPairedCov$maxRow >= minCount, ] 
+
+# Summary of max counts per miRNA after removing the barely-expressed miRNAs
+summary(rawCountsPairedCov$maxRow)
+
+maxCount <- quantile(rawCountsPairedCov$maxRow, 0.99) # 80% percentile for the max
+rawCountsPairedCov = rawCountsPairedCov[rawCountsPairedCov$maxRow <= maxCount, ] 
+
+# Summary of max counts per miRNA after removing the over-expressed miRNAs
+summary(rawCountsPairedCov$maxRow)
+
+#-------------------------------
+# Prepare a normalized matrix (need to convert to numeric first)
+countsNorm <- mutate_all(rawCountsPairedCov, function(x) as.numeric(as.character(x)))
+
+# We normalize each row (and we need to use the transpose function)
+countsNorm = t(apply(
+  countsNorm, 1, function(x) round(
+                          (x-min(x))/(max(x)-min(x)), 
+                          3)))
+
+# Convert the "large matrix" into a dataframe
+countsNorm = as.data.frame(countsNorm)
+
+# Remove the column with the maxRow
+rawCountsPairedCov = rawCountsPairedCov[ , columnNames]
+countsNorm = countsNorm[ , columnNames]
+  
 
 # Add a +1 tous les cells to avoid an error with DESeq2
-counts_filt_df = counts_filt_df + 1
+#rawCountsPairedCov = rawCountsPairedCov + 1
 
-# Keep the same miRNAs in the normalized and averaged dataset
-norm_av_filt_df <- subset(norm_av_df, 
-                              rownames(norm_av_df) 
-                              %in% rownames(counts_filt_df))
+rm(columnNames)
+
 
 ```
 
 
+## Split the dataset into training (80%) and validation (20%) sets.
 
-## Split the dataset into training and validation sets.
 
-### Run this section if you do not use DESeq2 
+We randomized the dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 216 samples balanced between 108 Controls and 108 Cases.
 
-We randomized the normalized dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 224 samples balanced between 112 Controls and 112 Cases.
+When splitting the dataset, we make sure to keep the pairs of (Case, Control) in the same subset (training or test).
 
 ``` {R split-data-catherine}
 
@@ -217,56 +254,36 @@ We randomized the normalized dataset and split it into 2 training and test data 
 set.seed(123)
 
 # Obtain the sample names (KXXX) and randomize them
-sampled_names <- sample(unique(str_extract(colnames(norm_av_filt_df), "K\\d+")))
+sampledNames <- sample(unique(str_extract(colnames(rawCountsPairedCov), "k\\d+")))
 
-# Split the main dataframe into training and testing sets.
-index <- 1:length(sampled_names)
-test_index <- sample(index, trunc(length(index)/5))
+# Split the main dataframe into training and testing sets (80% tra.
+index <- 1:length(sampledNames)
+testIndex <- sample(index, trunc(length(index)/5))
 
-test_samples <- sampled_names[test_index]
-train_samples <- sampled_names[-test_index]
+testSamples <- sampledNames[testIndex]
+trainSamples <- sampledNames[-testIndex]
 
 # Create dataframes for testing and training
-test_df = norm_av_filt_df[grepl(paste(test_samples, collapse = "|"), colnames(norm_av_filt_df))]
-train_df = norm_av_filt_df[grepl(paste(train_samples, collapse = "|"), colnames(norm_av_filt_df))]
+countsTest = rawCountsPairedCov[grepl(paste(testSamples, collapse = "|"), colnames(rawCountsPairedCov))]
+countsTrain = rawCountsPairedCov[grepl(paste(trainSamples, collapse = "|"), colnames(rawCountsPairedCov))]
+
+normTest = countsNorm[grepl(paste(testSamples, collapse = "|"), colnames(countsNorm))]
+normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(countsNorm))]
 
 
 # Delete intermediary data
-rm(index, test_index, norm_av_filt_df, sampled_names,
-  test_samples, train_samples)
-
-```
-
-### Run this section if you use DESeq2
-
-Here we split the the matrix of raw counts.
-
-``` {R split-data-deseq2}
-
-# # set seed to ensure reproducible results
-# set.seed(123)
-# 
-# sampled_counts_df <- counts_filt_df[, sample(colnames(counts_filt_df))]
-# 
-# # Split the main dataframe into training and testing sets.
-# index <- 1:length(colnames(sampled_counts_df))
-# test_index <- sample(index, trunc(length(index)/5))
-# 
-# test_df <- sampled_counts_df[test_index]
-# train_df <- sampled_counts_df[-test_index]
-# 
-# # Create a sample info file for the training dataset 
-# sample_info_train <- sample_info[sample_info$sample %in% colnames(train_df), ]
-
+rm(index, testIndex)
 
 ```
 
 
+## Identify representative miRNAs using clustering techniques
 
+Using boundaries on the number of counts we were able to decrease the number of miRNAs from 635k to 28k but there are still 100x more features than samples, which is termed the "curse of dimensionality".
 
-## Identify the miRNAs that can play a role
+### Method #1: Paired t-test on the (Case, Control) pairs
 
-### Method #1: Paired t-test
+Since samples are paired, we can measure a difference in the expression of miRNAs for all pairs.
 
 #### Run the paired t-test
 
