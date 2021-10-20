@@ -255,8 +255,9 @@ countsNorm = countsNorm[ , columnNames]
 ```
 
 
-## Split the dataset into training (80%) and validation (20%) sets.
+## Split the dataset into training (66.66% of data) and test (33.33% of data) sets.
 
+To make sure we avoid over-fitting, we split the dataset into a training and a test datasets.
 
 ``` {R split-data}
 
@@ -356,7 +357,7 @@ ttestDataset = ttestDataset[!is.na(ttestDataset$effectSize), ]
 #----------------------------------------------------
 
 # Pick min effect size (we picked it to obtain ~20 miRNAs)
-minEffectSize = 3 
+minEffectSize = 2 
 
 # Pick max p-value
 maxPValue = 0.05
@@ -428,6 +429,8 @@ deseqNormTrain <- counts(dds, normalized = T)
 
 deseqmiRNA <- c(rownames(mirnaUpregDESeq), rownames(mirnaDownregDESeq)) 
 
+cat("There are", length(deseqmiRNA), "miRNAs selected by DESeq2")
+
 #miR_upreg$miRNA_id <- rownames(miR_upreg)
 #miR_downreg$miRNA_id <- rownames(miR_downreg)
 #miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
@@ -447,7 +450,7 @@ deseqmiRNA <- c(rownames(mirnaUpregDESeq), rownames(mirnaDownregDESeq))
 ``` {R filter datasets}
 
 # Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
-mirnaModel <- deseqmiRNA
+mirnaModel <- deseqmiRNA # deseqmiRNA OR ttestmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -480,8 +483,8 @@ trainingSet$condition = apply(trainingSet['sample'], 1, findCondition)
 testSet$condition = apply(testSet['sample'], 1, findCondition)
 
 # New column names (re-ordered)
-trainingSet = trainingSet[, c('condition', mirna)]
-testSet = testSet[, c('condition', mirna)]
+trainingSet = trainingSet[, c('condition', mirnaModel)]
+testSet = testSet[, c('condition', mirnaModel)]
 
 # Create a vector of the labels in the test dataset (control = 0, case = 1)
 testLabels = ifelse(testSet$condition == "Control", 0, 1)
@@ -518,9 +521,9 @@ print(p)
 
 ```
 
-### Classification using lasso logistic regression
+### Lasso logistic regression
 
-Our goal is to select as few variables as possible (because of experimental constraints). Therefore, we run a penalized logistic regression using the lasso regression. In this regression, the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model. The
+Because sequencing of miRNAs is cumbersome and expensive, our goal is to select as few features as possible. Therefore, we run a penalized logistic regression using the lasso regression. In this regression, the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model.
 
 
 ``` {R lasso}
@@ -528,11 +531,11 @@ Our goal is to select as few variables as possible (because of experimental cons
 # Dumy code categorical predictor variables
  xTraining <- model.matrix(condition~., trainingSet)[,-1]
 
-# Model
-cvLasso <- cv.glmnet(xTraining, trainingLabels, alpha = 1, family = "binomial")
+# We build cvLasso to find the optimal Lambda
+cvLasso <- cv.glmnet(xTraining, trainingLabels, family = "gaussian")
 
-# Build model with lamnda min
- lassoModel <- glmnet(xTraining, trainingLabels, alpha = 1, family = "binomial", lambda = cvLasso$lambda.min)
+# Build model (Family can be binomial, poisson, gaussian)
+lassoModel <- glmnet(xTraining, trainingLabels, alpha = 1, family = "gaussian", lambda = cvLasso$lambda.min)
 
 xTest <- model.matrix(condition ~., testSet)[,-1]
 probabilities <- lassoModel %>% predict(newx = xTest, type="response")
@@ -556,10 +559,10 @@ plot(perf,  main = "ROC curve")
 #lines(c(0,1),c(0,1),col = "gray", lty = 4 )
 
 # plot the no-prediction line
-auc_ROCR <- performance(pred, measure = "auc")
-  auc_ROCR <- auc_ROCR@y.values[[1]]
+lassoAUC <- performance(pred, measure = "auc")
+lassoAUC <- lassoAUC@y.values[[1]]
 
-cat("The AUC is", auc_ROCR)  
+cat("The AUC is", lassoAUC)  
 
 # Regression parameters  
 #coef(cv_lasso, cv_lasso$lambda.min)
@@ -575,20 +578,24 @@ perf <- performance(pred, "sens", "spec")
 plot(perf)
 
 # Coefficients
-coef(cvLasso, cvLasso$lambda.min)
+#coef(cvLasso, cvLasso$lambda.min)
 ```
 
-### Classification using support vector machines
+### Support vector machines
 
 ``` {R svm}
 
-set.seed(42)
-
 # Treat the condition as a factor
 trainingSet$condition = as.factor(trainingSet$condition)
-svmModel <- svm(condition ~ ., data = trainingSet, kernel = "polynomial", cost = 100, gamma = 10, probability = TRUE)
+
+# SVM kernels are polynomial, linear, radial, sigmoid
+svmModel <- svm(condition ~ ., data = trainingSet, type = 'C-classification', 
+                kernel = "polynomial", cost = 10, gamma = 1, probability = TRUE)
+
+# Generate predictions on the test dataset
 svmPred <- predict(svmModel, 
-                    testSet[ , !names(testSet) %in% c('condition')], probability = TRUE)
+                    testSet[ , !names(testSet) %in% c('condition')], 
+                   probability = TRUE)
 
 # Confusion matrix
 table(pred = svmPred, true = testSet[, c('condition')])
@@ -627,14 +634,14 @@ plot(perf)
 ```
 
 
-### Classification using regression trees
+### Regression trees
 
 ``` {R regression-tree}
 
 ## Regression tree
-rpartModel <- rpart(condition ~ ., data = testSet)
-rpartPred <- predict(rpartModel, testSet[ , !names(testSet) 
-                              %in% c('condition')], type = "class")
+rpartModel <- rpart(condition ~ ., data = trainingSet)
+rpartPred <- predict(rpartModel, 
+                     testSet[ , !names(testSet) %in% c('condition')], type = "class")
 
 # Confusion matrix for rpart
 table(pred = rpartPred, true = testSet[, c('condition')])
@@ -643,15 +650,18 @@ table(pred = rpartPred, true = testSet[, c('condition')])
 rpartAccuracy = mean(rpartPred == testSet$condition)
 cat("The accuracy is", rpartAccuracy, "\n")
 
+# The following command should return the probabilities of the test set but returns the probabilities of the training set
+rpartProb <- predict(rpartModel, testSet[ , !names(testSet) %in% c('condition')], type = "prob")
+
+
 # ROC
-pred <- prediction(as.data.frame(attr(rpartPred, "probabilities"))$Case, conditionBinary)
+pred <- prediction(as.data.frame(attr(rpartPred, "prob"))$Case, testLabels)
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
 # Plot the ROC curve
 plot(perf,  main = "ROC curve")
 # plot the no-prediction line
-lines(c(0,1),c(0,1),col = "gray", lty = 4 )
 rpartAUC <- performance(pred, measure = "auc")
 rpartAUC <- rpartAUC@y.values[[1]]
 
@@ -672,4 +682,15 @@ plot(perf)
 
 
 ```
+### Naive Bayes
+
+TBD
+
+
+## Conclusion
+
+Our "naive" approach for identifying differentialy-expressed miRNAs performed as well as the more elaborate, published DESeq2 bioinformatics package when the miRNAs were used in machine-learning models to predict the diagnosis based on miRNAs.
+
+Make a comparison table of clustering/models for accuracy & AUC.
+For the models try a few more options.
 
