@@ -195,7 +195,7 @@ That leaves us with 5k-30k miRNAs (down from 635k), depending on the parameters.
 ```{R filter-coverage}
 
 # Parameters
-minCount <- 100 
+minCount <- 20 
 maxPerc <- 0.99
 
 # # We start by making a copy of the dataframe
@@ -258,10 +258,6 @@ countsNorm = countsNorm[ , columnNames]
 
 ## Split the dataset into training (80%) and validation (20%) sets.
 
-
-We randomized the dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 262 samples balanced between 108 Controls and 108 Cases.
-
-When splitting the dataset, we make sure to keep the pairs of (Case, Control) in the same subset (training or test).
 
 ``` {R split-data}
 
@@ -439,33 +435,13 @@ normTrainFilt <- normTrain[mirnaModel, ]
 
 ## Predictions using machine-learning techniques
 
-### Variables used in the ML models
+### Prepare the training and test datasets for the models
 
 ``` {r variables}
-conditionBinary = ifelse(testSet$condition == "Control", 0, 1)
 
-```
-
-
-
-### Visualize the data using multi-dimensional scaling on the training dataset
-
-``` {R visualize-results}
-
-# Remove the calculation variables from normTrainFilt 
-trainingSet = normTrainFilt[, !names(normTrainFilt) %in% 
-                   c('mirna', 'pValue', 
-                     'caseMean', 'controlMean', 'effectSize', 'adjPValue')]
-
-# Transpose the dataset to have rows as samples and columns as miRNAs (features)
-trainingSet <- as.data.frame(t(trainingSet))
+# Transpose the datasets for feeding the models
+trainingSet <- as.data.frame(t(normTrainFilt))
 testSet <- as.data.frame(t(normTestFilt))
-
-# Grab the names of the miRNAs
-mirna <- colnames(trainingSet)
-
-# Gather names of columns before manipulation
-trainingSamples <- colnames(trainingSet)
 
 # Create a column with the samples names
 trainingSet$sample = rownames(trainingSet)
@@ -484,14 +460,20 @@ findCondition <- function(x) {
 trainingSet$condition = apply(trainingSet['sample'], 1, findCondition)
 testSet$condition = apply(testSet['sample'], 1, findCondition)
 
-
 # New column names (re-ordered)
 trainingSet = trainingSet[, c('condition', mirna)]
 testSet = testSet[, c('condition', mirna)]
-#test_scaled_df = test_scaled_df[, !colnames(test_scaled_df) %in% 'sample']
 
-# Check the data type of the data frame
-# sapply(for_model_df_t, class) 
+# Create a vector of the labels in the test dataset (control = 0, case = 1)
+testLabels = ifelse(testSet$condition == "Control", 0, 1)
+trainingLabels = ifelse(trainingSet$condition == "Control", 0, 1)
+
+```
+
+
+### Visualize the data using multi-dimensional scaling on the training dataset
+
+``` {R mds}
 
 # Create MDS dataset in 2 dimensions
 mds <- trainingSet %>%
@@ -517,8 +499,6 @@ print(p)
 
 ```
 
-
-
 ### Classification using lasso logistic regression
 
 Our goal is to select as few variables as possible (because of experimental constraints). Therefore, we run a penalized logistic regression using the lasso regression. In this regression, the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model. The
@@ -527,19 +507,13 @@ Our goal is to select as few variables as possible (because of experimental cons
 ``` {R lasso}
 
 # Dumy code categorical predictor variables
-xTraining <- model.matrix(condition~., trainingSet)[,-1]
-# Convert the outcome (class) to a numerical variable
-yTraining <- ifelse(trainingSet$condition == "Case", 1, 0)
+ xTraining <- model.matrix(condition~., trainingSet)[,-1]
 
 # Model
-cvLasso <- cv.glmnet(xTraining, yTraining, alpha = 1, family = "binomial")
-
-# Display binomial deviance
-#plot(cvLasso)
+cvLasso <- cv.glmnet(xTraining, trainingLabels, alpha = 1, family = "binomial")
 
 # Build model with lamnda min
-lassoModel <- glmnet(xTraining, yTraining, alpha = 1, family = "binomial", lambda = cvLasso$lambda.min)
-
+ lassoModel <- glmnet(xTraining, trainingLabels, alpha = 1, family = "binomial", lambda = cvLasso$lambda.min)
 
 xTest <- model.matrix(condition ~., testSet)[,-1]
 probabilities <- lassoModel %>% predict(newx = xTest, type="response")
@@ -553,15 +527,16 @@ modelAccuracy = mean(predictedClasses == testSet$condition)
 cat("The accuracy is", modelAccuracy, "\n")
 
 # ROC curve
-pred <- prediction(as.vector(probabilities), as.vector(conditionBinary))
+pred <- prediction(as.vector(probabilities), as.vector(testLabels))
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
 
 # Plot the ROC curve
 plot(perf,  main = "ROC curve")
+#lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+
 # plot the no-prediction line
-lines(c(0,1),c(0,1),col = "gray", lty = 4 )
 auc_ROCR <- performance(pred, measure = "auc")
   auc_ROCR <- auc_ROCR@y.values[[1]]
 
@@ -604,14 +579,14 @@ svmAccuracy = mean(svmPred == testSet$condition)
 cat("The accuracy is", svmAccuracy, "\n")
 
 # ROC
-pred <- prediction(as.data.frame(attr(svmPred, "probabilities"))$Case, conditionBinary)
+pred <- prediction(as.data.frame(attr(svmPred, "probabilities"))$Case, testLabels)
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
 # Plot the ROC curve
 plot(perf,  main = "ROC curve")
 # plot the no-prediction line
-lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+#lines(c(0,1),c(0,1),col = "gray", lty = 4 )
 svmAUC <- performance(pred, measure = "auc")
 svmAUC <- svmAUC@y.values[[1]]
 
