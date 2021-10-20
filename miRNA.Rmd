@@ -195,7 +195,7 @@ That leaves us with 5k-30k miRNAs (down from 635k), depending on the parameters.
 ```{R filter-coverage}
 
 # Parameters
-minCount <- 50 
+minCount <- 100 
 maxPerc <- 0.99
 
 # # We start by making a copy of the dataframe
@@ -226,6 +226,12 @@ rawCountsIdCov = rawCountsIdCov[rawCountsIdCov$maxRow <= maxCount, ]
 # Summary of max counts per miRNA after removing the over-expressed miRNAs
 summary(rawCountsIdCov$maxRow)
 
+
+```
+
+We then normalize the matrix of counts per miRNA (between 0 and 1)
+
+``` {R normalize}
 #-------------------------------
 # Prepare a normalized matrix (need to convert to numeric first)
 countsNorm <- mutate_all(rawCountsIdCov, function(x) as.numeric(as.character(x)))
@@ -243,11 +249,8 @@ countsNorm = as.data.frame(countsNorm)
 rawCountsIdCov = rawCountsIdCov[ , columnNames]
 countsNorm = countsNorm[ , columnNames]
   
-
 # Add a +1 tous les cells to avoid an error with DESeq2
 #rawCountsPairedCov = rawCountsPairedCov + 1
-
-rm(columnNames)
 
 
 ```
@@ -270,7 +273,7 @@ sampledNames <- sample(colnames(countsNorm))
 
 # Take 20% of these sample positions at random for the test dataset
 sampleIndices <- 1:length(sampledNames)
-testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/5))
+testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/3))
 
 testSamples <- sampledNames[testIndices]
 trainSamples <- sampledNames[-testIndices]
@@ -296,73 +299,71 @@ This method is the most intuitive: for each miRNA, we measure if there is a sign
 
 ``` {R t-test}
 
+ttestDataset = countsTrain
+
 # Lists of samples that are "Control"  and  "Case"
-controlsTrain = normTrain[grepl("Control", colnames(normTrain))]
-casesTrain = normTrain[grepl("Case", colnames(normTrain))]
+controlsTrain = ttestDataset[grepl("Control", colnames(ttestDataset))]
+casesTrain = ttestDataset[grepl("Case", colnames(ttestDataset))]
 
 # Create a column with the row names
-normTrain$mirna = rownames(normTrain)
-
-# suppressWarnings(
+ttestDataset$mirna = rownames(ttestDataset)
 
 # Compute the  p-value of a t-test for each miRNA
-normTrain$pValue <- apply(normTrain, 1,
+ttestDataset$pValue <- apply(ttestDataset, 1,
                               function(x) round(wilcox.test(
                                 as.numeric(controlsTrain[x['mirna'], ]),
                                 as.numeric(casesTrain[x['mirna'], ]),
                                 paired = FALSE,
                                 alternative = "two.sided")$p.value, 3))
 
-normTrain$controlMean <- apply(normTrain, 1,
+ttestDataset$controlMean <- apply(ttestDataset, 1,
                               function(x) round(mean( 
                                 as.numeric( controlsTrain[x['mirna'], ] ), 
                                 na.rm = FALSE ),3))
 
-normTrain$caseMean <- apply(normTrain, 1,
+ttestDataset$caseMean <- apply(ttestDataset, 1,
                               function(x) round(mean( 
                                 as.numeric(casesTrain[x['mirna'], ]), 
                                 na.rm = FALSE ), 3))
 
-normTrain$effectSize <- round(normTrain$caseMean / normTrain$controlMean, 3)
+ttestDataset$effectSize <- round(ttestDataset$caseMean / ttestDataset$controlMean, 3)
                               
 # Correct for multiple testing using Benjamini & Hochberg 
 # criteria (commented because not used)
-normTrain$adjPValue <- p.adjust(normTrain$pValue, method = "BH")
+ttestDataset$adjPValue <- p.adjust(ttestDataset$pValue, method = "BH")
 
 # Delete intermediary files
 rm(controlsTrain, casesTrain)
 
 # Display statistics on the effect size
-summary(normTrain$effectSize)
+summary(ttestDataset$effectSize)
 
 # Display statistics on the p-value
-summary(normTrain$pValue)
+summary(ttestDataset$pValue)
 
 #----------------------------------------------------
 # Remove the miRNA where the effect size is NA
-normTrain = normTrain[!is.na(normTrain$effectSize), ]
+ttestDataset = ttestDataset[!is.na(ttestDataset$effectSize), ]
 
 #----------------------------------------------------
 
 # Pick min effect size (we picked it to obtain ~20 miRNAs)
-minEffectSize = 4 
+minEffectSize = 3 
 
 # Pick max p-value
 maxPValue = 0.05
 
 # Filter based on effect size
-normTrainFilt <- normTrain[normTrain$effectSize > minEffectSize |
-                           normTrain$effectSize < 1/minEffectSize, ]
+ttestDataset <- ttestDataset[ttestDataset$effectSize > minEffectSize |
+                           ttestDataset$effectSize < 1/minEffectSize, ]
 
 # Filter based on p-value
-normTrainFilt = normTrainFilt[normTrainFilt$pValue < maxPValue, ]
+ttestDataset = ttestDataset[ttestDataset$pValue < maxPValue, ]
 
 # Create an array of the selected miRNAs
-mirna <- rownames(normTrainFilt)
-print(mirna)
+ttestmiRNA <- rownames(ttestDataset)
+cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
 
-# Create the equivalent dataset for testing
-normTestFilt <- normTest[mirna, ]
 
 ```
 
@@ -418,49 +419,60 @@ normTestFilt <- normTest[mirna, ]
 ```
 
 
+### Filter datasets with the selected miRNAs
 
-## Predictions using machine-learning
+``` {R filter datasets}
 
-### Scale the parameters
+mirnaModel <- ttestmiRNA
 
-For each miRNA, we normalize by usign the formula $(x-\mu)/\sigma$ where $\mu$ is the mean of all samples for a given miRNA and where $\sigma$ is the standard deviation.
+# Matrices of counts
+countsTrainFilt = countsTrain[mirnaModel, ]
+countsTestFilt = countsTest[mirnaModel, ]
 
-``` {R scale-params}
+# Matrices of normalized counts
+normTestFilt <- normTest[mirnaModel, ]
+normTrainFilt <- normTrain[mirnaModel, ]
 
-# Get rid of columns we do not need in the training dataset
-tmp <- train_filt_df
-tmp = tmp[, !names(tmp) %in% 
-                  c('mirna', 'unadjusted_p_value', 'adjusted_p_value', 
-                    'mean_control', 'mean_case', 'effect_size')]
-
-# Transpose data frame
-train_transposed_df <- as.data.frame(t(tmp))
-test_transposed_df <- as.data.frame(t(test_filt_df))
-
-# Apply scale function
-train_scaled_df <- as.data.frame(apply(train_transposed_df, 2, scale))
-rownames(train_scaled_df) = rownames(train_transposed_df)
-test_scaled_df <- as.data.frame(apply(test_transposed_df, 2, scale))
-rownames(test_scaled_df) = rownames(test_transposed_df)
-
-
-rm(tmp, train_transposed_df, test_transposed_df)
 
 ```
+
+
+## Predictions using machine-learning techniques
+
+### Variables used in the ML models
+
+``` {r variables}
+conditionBinary = ifelse(testSet$condition == "Control", 0, 1)
+
+```
+
+
 
 ### Visualize the data using multi-dimensional scaling on the training dataset
 
 ``` {R visualize-results}
 
+# Remove the calculation variables from normTrainFilt 
+trainingSet = normTrainFilt[, !names(normTrainFilt) %in% 
+                   c('mirna', 'pValue', 
+                     'caseMean', 'controlMean', 'effectSize', 'adjPValue')]
+
+# Transpose the dataset to have rows as samples and columns as miRNAs (features)
+trainingSet <- as.data.frame(t(trainingSet))
+testSet <- as.data.frame(t(normTestFilt))
+
+# Grab the names of the miRNAs
+mirna <- colnames(trainingSet)
+
 # Gather names of columns before manipulation
-col_names <- colnames(train_scaled_df)
+trainingSamples <- colnames(trainingSet)
 
 # Create a column with the samples names
-train_scaled_df$sample = rownames(train_scaled_df)
-test_scaled_df$sample = rownames(test_scaled_df)
+trainingSet$sample = rownames(trainingSet)
+testSet$sample = rownames(testSet)
 
 # Function to figure out if the sample is a "Control" or a "Sample"
-sample_condition <- function(x) {
+findCondition <- function(x) {
   if ( grepl('Case', x) ) {
     answer = "Case"
   } else {
@@ -469,26 +481,26 @@ sample_condition <- function(x) {
   return (answer)}
 
 # Apply function to create a new column
-train_scaled_df$condition = apply(train_scaled_df['sample'], 1, sample_condition)
-test_scaled_df$condition = apply(test_scaled_df['sample'], 1, sample_condition)
+trainingSet$condition = apply(trainingSet['sample'], 1, findCondition)
+testSet$condition = apply(testSet['sample'], 1, findCondition)
 
 
 # New column names (re-ordered)
-new_colnames = c('condition', col_names)
-train_scaled_df = train_scaled_df[, new_colnames]
-test_scaled_df = test_scaled_df[, !colnames(test_scaled_df) %in% 'sample']
+trainingSet = trainingSet[, c('condition', mirna)]
+testSet = testSet[, c('condition', mirna)]
+#test_scaled_df = test_scaled_df[, !colnames(test_scaled_df) %in% 'sample']
 
 # Check the data type of the data frame
 # sapply(for_model_df_t, class) 
 
 # Create MDS dataset in 2 dimensions
-mds <- train_scaled_df %>%
+mds <- trainingSet %>%
   dist() %>%
   cmdscale() %>%
   as_tibble()
 colnames(mds) <- c("Dim.1", "Dim.2")
 # Add the condition to the dataframe
-mds$condition <- train_scaled_df$condition
+mds$condition <- trainingSet$condition
 mds$condition = as.factor(mds$condition)
 
 # Plot MDS for all data
@@ -502,9 +514,10 @@ p <- ggscatter(mds, x = "Dim.1", y = "Dim.2",
 
 print(p)
 
-rm(col_names, new_colnames, mds, p)
 
 ```
+
+
 
 ### Classification using lasso logistic regression
 
@@ -514,39 +527,33 @@ Our goal is to select as few variables as possible (because of experimental cons
 ``` {R lasso}
 
 # Dumy code categorical predictor variables
-x_training <- model.matrix(condition~., train_scaled_df)[,-1]
+xTraining <- model.matrix(condition~., trainingSet)[,-1]
 # Convert the outcome (class) to a numerical variable
-y_training <- ifelse(train_scaled_df$condition == "Case", 1, 0)
+yTraining <- ifelse(trainingSet$condition == "Case", 1, 0)
 
 # Model
-cv_lasso <- cv.glmnet(x_training, y_training, alpha = 1, family = "binomial")
-
-# Display regression coefficients
-#coef(model)
+cvLasso <- cv.glmnet(xTraining, yTraining, alpha = 1, family = "binomial")
 
 # Display binomial deviance
-#plot(cv_lasso)
-#coef(cv_lasso, cv_lasso$lambda.1se)
+#plot(cvLasso)
 
 # Build model with lamnda min
-lasso_model <- glmnet(x_training, y_training, alpha = 1, family = "binomial", lambda = cv_lasso$lambda.min)
+lassoModel <- glmnet(xTraining, yTraining, alpha = 1, family = "binomial", lambda = cvLasso$lambda.min)
 
 
-x_test <- model.matrix(condition ~., test_scaled_df)[,-1]
-probabilities <- lasso_model %>% predict(newx = x_test, type="response")
-predicted_classes <- ifelse(probabilities > 0.5, "Case", "Control")
+xTest <- model.matrix(condition ~., testSet)[,-1]
+probabilities <- lassoModel %>% predict(newx = xTest, type="response")
+predictedClasses <- ifelse(probabilities > 0.5, "Case", "Control")
 
 # Confusion matrix
-table(pred = predicted_classes, true = test_scaled_df[, c('condition')])
+table(pred = predictedClasses, true = testSet[, c('condition')])
 
 # Model accuracy
-model_accuracy = mean(predicted_classes == test_scaled_df$condition)
-cat("The accuracy is", model_accuracy, "\n")
+modelAccuracy = mean(predictedClasses == testSet$condition)
+cat("The accuracy is", modelAccuracy, "\n")
 
-# ROC
-test_roc <- test_scaled_df
-test_roc$condition_binary = ifelse(test_roc$condition == "Control", 0, 1)
-pred <- prediction(probabilities,test_roc$condition_binary)
+# ROC curve
+pred <- prediction(as.vector(probabilities), as.vector(conditionBinary))
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
@@ -573,10 +580,8 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-rm(x_training, y_training, x_test, model_accuracy, auc_ROCR, test_roc, perf, pred, probabilities)
-
 # Coefficients
-coef(cv_lasso, cv_lasso$lambda.min)
+coef(cvLasso, cvLasso$lambda.min)
 ```
 
 ### Classification using support vector machines
@@ -586,25 +591,20 @@ coef(cv_lasso, cv_lasso$lambda.min)
 set.seed(42)
 
 # Treat the condition as a factor
-
-train_copy <- train_scaled_df
-train_copy$condition = as.factor(train_scaled_df$condition)
-svm_model <- svm(condition ~ ., data = train_copy, kernel = "polynomial", cost = 100, gamma = 10, probability = TRUE)
-svm_pred <- predict(svm_model, 
-                    test_scaled_df[ , !names(test_scaled_df) %in% c('condition')], probability = TRUE)
+trainingSet$condition = as.factor(trainingSet$condition)
+svmModel <- svm(condition ~ ., data = trainingSet, kernel = "polynomial", cost = 100, gamma = 10, probability = TRUE)
+svmPred <- predict(svmModel, 
+                    testSet[ , !names(testSet) %in% c('condition')], probability = TRUE)
 
 # Confusion matrix
-table(pred = svm_pred, true = test_scaled_df[, c('condition')])
+table(pred = svmPred, true = testSet[, c('condition')])
 
 # Model accuracy
-model_accuracy = mean(svm_pred == test_scaled_df$condition)
-cat("The accuracy is", model_accuracy, "\n")
-# 
+svmAccuracy = mean(svmPred == testSet$condition)
+cat("The accuracy is", svmAccuracy, "\n")
 
 # ROC
-test_roc <- test_scaled_df
-test_roc$condition_binary = ifelse(test_roc$condition == "Control", 0, 1)
-pred <- prediction(as.data.frame(attr(svm_pred, "probabilities"))$Case, test_roc$condition_binary)
+pred <- prediction(as.data.frame(attr(svmPred, "probabilities"))$Case, conditionBinary)
 perf <- performance(pred,"tpr","fpr")
 par(pty="s")
 
@@ -612,10 +612,10 @@ par(pty="s")
 plot(perf,  main = "ROC curve")
 # plot the no-prediction line
 lines(c(0,1),c(0,1),col = "gray", lty = 4 )
-auc_ROCR <- performance(pred, measure = "auc")
-  auc_ROCR <- auc_ROCR@y.values[[1]]
+svmAUC <- performance(pred, measure = "auc")
+svmAUC <- svmAUC@y.values[[1]]
 
-cat("The AUC is", auc_ROCR)  
+cat("The AUC is", svmAUC)  
 
 # Regression parameters  
 #coef(cv_lasso, cv_lasso$lambda.min)
@@ -630,9 +630,6 @@ plot(perf)
 perf <- performance(pred, "sens", "spec")
 plot(perf)
 
-rm(perf, pred, model_accuracy, auc_ROCR, train_copy, test_roc, pred, perf, probabilities)
-
-
 ```
 
 
@@ -641,16 +638,44 @@ rm(perf, pred, model_accuracy, auc_ROCR, train_copy, test_roc, pred, perf, proba
 ``` {R regression-tree}
 
 ## Regression tree
-rpart_model <- rpart(condition ~ ., data = train_scaled_df)
-rpart_pred <- predict(rpart_model, test_scaled_df[ , !names(test_scaled_df) 
+rpartModel <- rpart(condition ~ ., data = testSet)
+rpartPred <- predict(rpartModel, testSet[ , !names(testSet) 
                               %in% c('condition')], type = "class")
 
 # Confusion matrix for rpart
-table(pred = rpart_pred, true = test_scaled_df[, c('condition')])
+table(pred = rpartPred, true = testSet[, c('condition')])
 
 # Accuracy
-model_accuracy = mean(rpart_pred == test_scaled_df$condition)
-cat("The accuracy is", model_accuracy, "\n")
+rpartAccuracy = mean(rpartPred == testSet$condition)
+cat("The accuracy is", rpartAccuracy, "\n")
+
+# ROC
+pred <- prediction(as.data.frame(attr(rpartPred, "probabilities"))$Case, conditionBinary)
+perf <- performance(pred,"tpr","fpr")
+par(pty="s")
+
+# Plot the ROC curve
+plot(perf,  main = "ROC curve")
+# plot the no-prediction line
+lines(c(0,1),c(0,1),col = "gray", lty = 4 )
+rpartAUC <- performance(pred, measure = "auc")
+rpartAUC <- rpartAUC@y.values[[1]]
+
+cat("The AUC is", svmAUC)  
+
+# Regression parameters  
+#coef(cv_lasso, cv_lasso$lambda.min)
+
+
+# precision/recall curve (x-axis: recall, y-axis: precision)
+perf <- performance(pred, "prec", "rec")
+plot(perf)
+
+# sensitivity/specificity curve (x-axis: specificity,
+# y-axis: sensitivity)
+perf <- performance(pred, "sens", "spec")
+plot(perf)
+
 
 ```
 
