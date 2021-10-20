@@ -155,8 +155,7 @@ sampleInfo = sampleInfo[!sampleInfo$sample %in%
                             c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
                               'ol_srna_tmm17_k604b2') , ]
 
-cat("There are ", length(sampleInfo[sampleInfo$condition == 'Case', ]$sample), "Case samples")
-cat("There are ", length(sampleInfo[sampleInfo$condition == 'Control', ]$sample), "Control samples")
+cat("There are ", length(sampleInfo[sampleInfo$condition == 'Case', ]$sample), "Case samples", "and", length(sampleInfo[sampleInfo$condition == 'Control', ]$sample), "Control samples")
 
 ```
 
@@ -289,7 +288,20 @@ normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(count
 
 Using boundaries on the number of counts we were able to decrease the number of miRNAs from 635k to 28k but there are still 100x more features than samples, which is termed the "curse of dimensionality".
 
-### Method #1: T-test on each miRNA between the Cases and Controls
+``` {R useful-functions}
+# Function to figure out if the sample is a "Control" or a "Sample"
+findCondition <- function(x) {
+  if ( grepl('Case', x) ) {
+    answer = "Case"
+  } else {
+      answer = "Control"
+  } 
+  return (answer)}
+
+```
+
+
+### Method #1 (naive): T-test on each miRNA between the Cases and Controls
 
 This method is the most intuitive: for each miRNA, we measure if there is a significant differently-expressed measurement between the Cases and the Controls.
 
@@ -363,54 +375,69 @@ cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
 
 ```
 
-### Method #2: DESeq2
+### Method #2 (existing bioinformatics package): DESeq2
 
 
 ```{R DESeq2-analysis}
 
-# ## DESeq2 Analysis
-# miR_dds <- DESeqDataSetFromMatrix(train_df, colData = sample_info_train, design = ~ condition)
-# miR_dds$condition <- relevel(miR_dds$condition, ref = "Control")
-# miR_dds <- DESeq(miR_dds)
-# resultsNames(miR_dds) # list the coefficients
-# 
-# ## DESeq2 results
-# miR_res <- results(miR_dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
-# summary(miR_res)
-# plotMA( miR_res, ylim = c(-1, 1) )
-# 
-# miR_res_df <- as.data.frame(miR_res)
-# ## Function to grab results
-# get_upregulated <- function(df){
-#     key <- intersect(rownames(df)[which(df$log2FoldChange>=1)],
-#               rownames(df)[which(df$pvalue<=0.05)])
-#     
-#     results <- as.data.frame((df)[which(rownames(df) %in% key),])
-#     return(results)
-#   }
-# get_downregulated <- function(df){
-#   key <- intersect(rownames(df)[which(df$log2FoldChange<=-1)],
-#             rownames(df)[which(df$pvalue<=0.05)])
-#   
-#   results <- as.data.frame((df)[which(rownames(df) %in% key),])
-#   return(results)
-# }
-# miR_upreg <- get_upregulated(miR_res)
-# miR_downreg <- get_downregulated(miR_res)
-# ## Write results for plots and analysis
-# miR_counts <- counts(miR_dds, normalized = T)
-# 
-# # Create a directory where to write the results
-# dir.create("results/")
-# 
-# # Write the results
-# write.table(miR_counts, "results/miR_norm.counts.txt", quote = F, sep = "\t")
-# miR_upreg$miRNA_id <- rownames(miR_upreg)
-# miR_downreg$miRNA_id <- rownames(miR_downreg)
-# miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
-# miR_downreg <- miR_downreg[,c(8,1,2,3,4,5,6,7)]
-# write.table(miR_upreg, "results/miR_upreg.txt", quote = F, sep = "\t", row.names = F)
-# write.table(miR_downreg, "results/miR_downreg.txt", quote = F, sep = "\t", row.names = F)
+# DESeq2 requires the matrix of raw counts as an input
+deseqCounts <- countsTrain + 1 # +1 to avoid errors (the matrix cannot contain zeros)
+
+# Sample info file for DESeq2
+deseqSampleInfo <- as.data.frame(colnames(deseqCounts))
+colnames(deseqSampleInfo) = c('sample')
+deseqSampleInfo$condition = apply(deseqSampleInfo['sample'], 1, findCondition)
+
+## DESeq2 Analysis
+dds <- DESeqDataSetFromMatrix(deseqCounts, 
+                                  colData = deseqSampleInfo, 
+                                  design = ~ condition)
+
+dds$condition <- relevel(dds$condition, ref = "Control")
+
+# Compute the up and down regulated miRNAs
+dds <- DESeq(dds)
+
+## DESeq2 results
+deseqModel <- results(dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
+summary(deseqModel)
+
+deseqmiRNATable <- as.data.frame(deseqModel)
+
+## Function to grab results
+get_upregulated <- function(df){
+    key <- intersect(rownames(df)[which(df$log2FoldChange>=1)],
+              rownames(df)[which(df$pvalue<=0.05)])
+
+    results <- as.data.frame((df)[which(rownames(df) %in% key),])
+    return(results)
+  }
+get_downregulated <- function(df){
+  key <- intersect(rownames(df)[which(df$log2FoldChange<=-1)],
+            rownames(df)[which(df$pvalue<=0.05)])
+
+  results <- as.data.frame((df)[which(rownames(df) %in% key),])
+  return(results)
+}
+
+mirnaUpregDESeq <- get_upregulated(deseqmiRNATable)
+mirnaDownregDESeq <- get_downregulated(deseqmiRNATable)
+
+# Normalized counts from DESeq matrix
+deseqNormTrain <- counts(dds, normalized = T)
+
+deseqmiRNA <- c(rownames(mirnaUpregDESeq), rownames(mirnaDownregDESeq)) 
+
+#miR_upreg$miRNA_id <- rownames(miR_upreg)
+#miR_downreg$miRNA_id <- rownames(miR_downreg)
+#miR_upreg <- miR_upreg[,c(8,1,2,3,4,5,6,7)]
+#miR_downreg <- miR_downreg[,c(8,1,2,3,4,5,6,7)]
+
+# Write the results in txt files
+#dir.create("deseq2results/")
+#write.table(deseqNormTrain, "deseq2results/deseqNormTrain.txt", quote = F, sep = "\t")
+#write.table(mirnaUpregDESeq, "deseq2results/mirnaUpregDESeq.txt", quote = F, sep = "\t", row.names = F)
+#write.table(mirnaDownregDESeq, "deseq2results/mirnaDownregDESeq.txt", quote = F, sep = "\t", row.names = F)
 
 ```
 
@@ -419,7 +446,8 @@ cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
 
 ``` {R filter datasets}
 
-mirnaModel <- ttestmiRNA
+# Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
+mirnaModel <- deseqmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -446,15 +474,6 @@ testSet <- as.data.frame(t(normTestFilt))
 # Create a column with the samples names
 trainingSet$sample = rownames(trainingSet)
 testSet$sample = rownames(testSet)
-
-# Function to figure out if the sample is a "Control" or a "Sample"
-findCondition <- function(x) {
-  if ( grepl('Case', x) ) {
-    answer = "Case"
-  } else {
-      answer = "Control"
-  } 
-  return (answer)}
 
 # Apply function to create a new column
 trainingSet$condition = apply(trainingSet['sample'], 1, findCondition)
