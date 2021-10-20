@@ -115,11 +115,19 @@ nbmiRNAsRaw <- nrow(rawCounts)
 
 In the matrix above, we do not know if a sample is "Control" (healthy) or "Case" (Breast Cancer). The sample info file will give us this information. 
 
+There are 137 "Case" samples and 125 "Control" samples.
+
 
 ```{R sample-info}
 
-# Importe file
-sampleInfo <- read.csv(file = 'raw_data/sample_info.csv', header = TRUE)
+# We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
+sampleInfo <- read.csv(file = 'raw_data/sample_info_DC.csv', header = TRUE)
+
+# Remove the samples identified to be excluded (37 samples)
+sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
+
+# Remove the samples that neither case or control (71 samples)
+sampleInfo = sampleInfo[sampleInfo$status %in%c('Case', 'Control'), ]
 
 # Keep the columns of interest
 sampleInfo = sampleInfo[,c('subsample','status')]
@@ -138,41 +146,39 @@ sampleInfo$sample = tolower(sampleInfo$sample)
 
 # Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017Y_Case"
 # We need to keep the pairs of samples in the same training set
-sampleInfo$new_name <- paste(str_extract(
+sampleInfo$sampleName <- paste(str_extract(
         sampleInfo$sample, "k.*"), "_",
         sampleInfo$condition, sep = "")
 
-# Remove a few samples that would duplicate new names
+# Remove a few samples that would duplicate the new ames
 sampleInfo = sampleInfo[!sampleInfo$sample %in%
                             c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
-                              'ol_srna_tmm17_k604b2') ,
-                          ]
+                              'ol_srna_tmm17_k604b2') , ]
+
+cat("There are ", length(sampleInfo[sampleInfo$condition == 'Case', ]$sample), "Case samples")
+cat("There are ", length(sampleInfo[sampleInfo$condition == 'Control', ]$sample), "Control samples")
 
 ```
 
-Now, we remove from the matrix of counts all samples that are not in the sampleInfo file.  After that, we're left with 216 samples which are 108 pairs of (Case, Control) miRNA profiles. We're excluding 72 samples from the dataset.
+Now, we remove from the matrix of counts all samples that are not in the sampleInfo file.  After that, we're left with 262 samples in the matrix of raw counts.
 
 
 ``` {r rename-samples-in-count-matrix}
 
 # Keep the samples of the count matrix that are in the sample info file.
-rawCountsPaired = rawCounts[names(rawCounts) %in% sampleInfo$sample]
+rawCountsId = rawCounts[names(rawCounts) %in% sampleInfo$sample]
 
 # Identify the samples that are not paired.
-pairedSamples <- colnames(rawCountsPaired)
+idSamples <- colnames(rawCountsId)
 allSamples <- colnames(rawCounts)
-unpairedSamples <- allSamples[!(allSamples %in% pairedSamples)]
-cat("There are", length(unpairedSamples), "excluded from the dataset")
+excludedSamples <- allSamples[!(allSamples %in% idSamples)]
+cat("There are", length(excludedSamples), "samples excluded from the dataset")
 
 # Rename columns of the count matrix.
-tmp <- as.data.frame(colnames(rawCountsPaired))
-tmp$new_name = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sample == x, 'new_name'])
+tmp <- as.data.frame(colnames(rawCountsId))
+tmp$new_name = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sample == x, 'sampleName'])
 
-colnames(rawCountsPaired) = tmp$new_name
-
-# Clean the sample info file
-sampleInfo = sampleInfo[, c('new_name', 'condition')]
-colnames(sampleInfo) = c('sample', 'condition')
+colnames(rawCountsId) = tmp$new_name
 
 rm(tmp)
 
@@ -181,42 +187,48 @@ rm(tmp)
 
 ### Filter the miRNAs by their coverage and prepare a normalized matrix
 
-We remove miRNAs that do not show at least 10 counts in one sample. We also remove miRNAs where the count is above the 99% percentile after removing the poorly-expressed miRNAs.
+We remove miRNAs that do not show at least 50 counts in one sample. We also remove miRNAs where the count is above the 99% percentile after removing the poorly-expressed miRNAs.
 
-That leaves us with ~28k miRNAs (down from 635k).
+That leaves us with 5k-30k miRNAs (down from 635k), depending on the parameters.
 
 
 ```{R filter-coverage}
 
+# Parameters
+minCount <- 50 
+maxPerc <- 0.99
+
 # # We start by making a copy of the dataframe
-rawCountsPairedCov <- rawCountsPaired
+rawCountsIdCov <- rawCountsId
 
 # We save the column names
-columnNames <- colnames(rawCountsPairedCov)
+columnNames <- colnames(rawCountsIdCov)
 
 # Filter rows by the max of their counts per miRNA
-minCount <- 10 # Cannot be less than 10.
 
-rawCountsPairedCov$maxRow = apply(rawCountsPairedCov, 1, function(x) max(x))
+rawCountsIdCov$maxRow = apply(rawCountsIdCov, 1, function(x) max(x))
 
 # Summary of the max number 
-summary(rawCountsPairedCov$maxRow)
+summary(rawCountsIdCov$maxRow)
 
-
-rawCountsPairedCov = rawCountsPairedCov[rawCountsPairedCov$maxRow >= minCount, ] 
+# Filter the matrix of counts out of miRNAs whose max is not at least minCount
+rawCountsIdCov = rawCountsIdCov[rawCountsIdCov$maxRow >= minCount, ] 
 
 # Summary of max counts per miRNA after removing the barely-expressed miRNAs
-summary(rawCountsPairedCov$maxRow)
+summary(rawCountsIdCov$maxRow)
 
-maxCount <- quantile(rawCountsPairedCov$maxRow, 0.99) # 80% percentile for the max
-rawCountsPairedCov = rawCountsPairedCov[rawCountsPairedCov$maxRow <= maxCount, ] 
+# Identify the upper bound for the max number of counts
+maxCount <- quantile(rawCountsIdCov$maxRow, maxPerc) 
+
+# Filter the matrix of row counts of miRNAs whose max is less than maxCounts
+rawCountsIdCov = rawCountsIdCov[rawCountsIdCov$maxRow <= maxCount, ] 
 
 # Summary of max counts per miRNA after removing the over-expressed miRNAs
-summary(rawCountsPairedCov$maxRow)
+summary(rawCountsIdCov$maxRow)
 
 #-------------------------------
 # Prepare a normalized matrix (need to convert to numeric first)
-countsNorm <- mutate_all(rawCountsPairedCov, function(x) as.numeric(as.character(x)))
+countsNorm <- mutate_all(rawCountsIdCov, function(x) as.numeric(as.character(x)))
 
 # We normalize each row (and we need to use the transpose function)
 countsNorm = t(apply(
@@ -228,7 +240,7 @@ countsNorm = t(apply(
 countsNorm = as.data.frame(countsNorm)
 
 # Remove the column with the maxRow
-rawCountsPairedCov = rawCountsPairedCov[ , columnNames]
+rawCountsIdCov = rawCountsIdCov[ , columnNames]
 countsNorm = countsNorm[ , columnNames]
   
 
@@ -244,35 +256,32 @@ rm(columnNames)
 ## Split the dataset into training (80%) and validation (20%) sets.
 
 
-We randomized the dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 216 samples balanced between 108 Controls and 108 Cases.
+We randomized the dataset and split it into 2 training and test data sets to avoid over-fitting. The original dataset has 262 samples balanced between 108 Controls and 108 Cases.
 
 When splitting the dataset, we make sure to keep the pairs of (Case, Control) in the same subset (training or test).
 
-``` {R split-data-catherine}
+``` {R split-data}
 
 # set seed to ensure reproducible results
 set.seed(123)
 
-# Obtain the sample names (KXXX) and randomize them
-sampledNames <- sample(unique(str_extract(colnames(rawCountsPairedCov), "k\\d+")))
+# Randomize the list of samples
+sampledNames <- sample(colnames(countsNorm))
 
-# Split the main dataframe into training and testing sets (80% tra.
-index <- 1:length(sampledNames)
-testIndex <- sample(index, trunc(length(index)/5))
+# Take 20% of these sample positions at random for the test dataset
+sampleIndices <- 1:length(sampledNames)
+testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/5))
 
-testSamples <- sampledNames[testIndex]
-trainSamples <- sampledNames[-testIndex]
+testSamples <- sampledNames[testIndices]
+trainSamples <- sampledNames[-testIndices]
 
 # Create dataframes for testing and training
-countsTest = rawCountsPairedCov[grepl(paste(testSamples, collapse = "|"), colnames(rawCountsPairedCov))]
-countsTrain = rawCountsPairedCov[grepl(paste(trainSamples, collapse = "|"), colnames(rawCountsPairedCov))]
+countsTest = rawCountsIdCov[grepl(paste(testSamples, collapse = "|"), colnames(rawCountsIdCov))]
+countsTrain = rawCountsIdCov[grepl(paste(trainSamples, collapse = "|"), colnames(rawCountsIdCov))]
 
 normTest = countsNorm[grepl(paste(testSamples, collapse = "|"), colnames(countsNorm))]
 normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(countsNorm))]
 
-
-# Delete intermediary data
-rm(index, testIndex)
 
 ```
 
@@ -281,78 +290,79 @@ rm(index, testIndex)
 
 Using boundaries on the number of counts we were able to decrease the number of miRNAs from 635k to 28k but there are still 100x more features than samples, which is termed the "curse of dimensionality".
 
-### Method #1: Paired t-test on the (Case, Control) pairs
+### Method #1: T-test on each miRNA between the Cases and Controls
 
-Since samples are paired, we can measure a difference in the expression of miRNAs for all pairs.
+This method is the most intuitive: for each miRNA, we measure if there is a significant differently-expressed measurement between the Cases and the Controls.
 
-#### Run the paired t-test
-
-We also ran a multiple-testing correction but after this correction, nothing is significant.
-
-``` {R t-test, message= FALSE}
+``` {R t-test}
 
 # Lists of samples that are "Control"  and  "Case"
-control_df = train_df[grepl("Control", colnames(train_df))]
-case_df = train_df[grepl("Case", colnames(train_df))]
+controlsTrain = normTrain[grepl("Control", colnames(normTrain))]
+casesTrain = normTrain[grepl("Case", colnames(normTrain))]
 
 # Create a column with the row names
-train_df$mirna = rownames(train_df)
+normTrain$mirna = rownames(normTrain)
 
-# Compute the  p-value of a paired t-test for each miRNA
-suppressWarnings(train_df$unadjusted_p_value <- apply(train_df, 1,
-                              function(x) wilcox.test(
-                                as.numeric(control_df[x['mirna'], ]),
-                                as.numeric(case_df[x['mirna'], ]),
-                                paired = TRUE,
-                                alternative = "two.sided")$p.value
-                              )
-)
+# suppressWarnings(
 
-train_df$mean_control <- apply(train_df, 1,
-                              function(x) mean( 
-                                as.numeric( control_df[x['mirna'], ] ), 
-                                na.rm = FALSE ) )
+# Compute the  p-value of a t-test for each miRNA
+normTrain$pValue <- apply(normTrain, 1,
+                              function(x) round(wilcox.test(
+                                as.numeric(controlsTrain[x['mirna'], ]),
+                                as.numeric(casesTrain[x['mirna'], ]),
+                                paired = FALSE,
+                                alternative = "two.sided")$p.value, 3))
 
-train_df$mean_case <- apply(train_df, 1,
-                              function(x) mean( 
-                                as.numeric(case_df[x['mirna'], ]), 
-                                na.rm = FALSE ))
+normTrain$controlMean <- apply(normTrain, 1,
+                              function(x) round(mean( 
+                                as.numeric( controlsTrain[x['mirna'], ] ), 
+                                na.rm = FALSE ),3))
 
-train_df$effect_size <- train_df$mean_case / train_df$mean_control
+normTrain$caseMean <- apply(normTrain, 1,
+                              function(x) round(mean( 
+                                as.numeric(casesTrain[x['mirna'], ]), 
+                                na.rm = FALSE ), 3))
+
+normTrain$effectSize <- round(normTrain$caseMean / normTrain$controlMean, 3)
                               
 # Correct for multiple testing using Benjamini & Hochberg 
 # criteria (commented because not used)
-#norm_av_filt_df$adjusted_p_value <- 
-#  p.adjust(norm_av_filt_df$unadjusted_p_value, method = "BH")
+normTrain$adjPValue <- p.adjust(normTrain$pValue, method = "BH")
 
 # Delete intermediary files
-rm(control_df, case_df)
+rm(controlsTrain, casesTrain)
 
-```
+# Display statistics on the effect size
+summary(normTrain$effectSize)
 
-#### Pick the miRNA based on p-value and effect size
+# Display statistics on the p-value
+summary(normTrain$pValue)
 
-``` {R retain-best-mirnas}
+#----------------------------------------------------
+# Remove the miRNA where the effect size is NA
+normTrain = normTrain[!is.na(normTrain$effectSize), ]
 
-# Parameters for picking the miRNAss
-max_nb_mirna <- 40
-min_effect_size = 2
+#----------------------------------------------------
 
-train_filt_df <- train_df
+# Pick min effect size (we picked it to obtain ~20 miRNAs)
+minEffectSize = 4 
 
-train_filt_df = train_filt_df[train_filt_df$effect_size > min_effect_size | 
-                            train_filt_df$effect_size < 1 / min_effect_size, ]
+# Pick max p-value
+maxPValue = 0.05
 
-train_filt_df <- train_filt_df[order(train_filt_df$unadjusted_p_value), 
-                             ][1:min(max_nb_mirna, nrow(train_filt_df)), ]
+# Filter based on effect size
+normTrainFilt <- normTrain[normTrain$effectSize > minEffectSize |
+                           normTrain$effectSize < 1/minEffectSize, ]
 
-mirna <- rownames(train_filt_df)
+# Filter based on p-value
+normTrainFilt = normTrainFilt[normTrainFilt$pValue < maxPValue, ]
 
-print("The model will pick among the following mirna")
+# Create an array of the selected miRNAs
+mirna <- rownames(normTrainFilt)
 print(mirna)
 
 # Create the equivalent dataset for testing
-test_filt_df <- test_df[mirna, ]
+normTestFilt <- normTest[mirna, ]
 
 ```
 
@@ -413,7 +423,7 @@ test_filt_df <- test_df[mirna, ]
 
 ### Scale the parameters
 
-For each miRNA, we normalize by usign the formula $(x-\mu)/\sigma$ where $\mu$ is the meann of all samples for a given miRNA and where $\sigma$ is the standard deviation.
+For each miRNA, we normalize by usign the formula $(x-\mu)/\sigma$ where $\mu$ is the mean of all samples for a given miRNA and where $\sigma$ is the standard deviation.
 
 ``` {R scale-params}
 
