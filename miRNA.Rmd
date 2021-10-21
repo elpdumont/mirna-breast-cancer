@@ -30,12 +30,17 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{R libraries, include = FALSE }
 library(knitr)
 
-# For DESeq2
+# For DESeq2 (clustering)
 library(DESeq2)
 library(IHW)
 library(data.table)
 
 library(matrixStats) # for rowMax
+
+# Library for HDBSCAN (clustering)  
+library(dbscan)
+
+library(naivebayes)
 
 # Libraries for MDS
 library(magrittr)
@@ -247,10 +252,6 @@ countsNorm = as.data.frame(countsNorm)
 # Remove the column with the maxRow
 rawCountsIdCov = rawCountsIdCov[ , columnNames]
 countsNorm = countsNorm[ , columnNames]
-  
-# Add a +1 tous les cells to avoid an error with DESeq2
-#rawCountsPairedCov = rawCountsPairedCov + 1
-
 
 ```
 
@@ -280,12 +281,10 @@ countsTrain = rawCountsIdCov[grepl(paste(trainSamples, collapse = "|"), colnames
 
 normTest = countsNorm[grepl(paste(testSamples, collapse = "|"), colnames(countsNorm))]
 normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(countsNorm))]
-
-
 ```
 
 
-## Identify representative miRNAs using clustering techniques
+## Identify representative miRNAs to be used in predictive models
 
 Using boundaries on the number of counts we were able to decrease the number of miRNAs from 635k to 28k but there are still 100x more features than samples, which is termed the "curse of dimensionality".
 
@@ -298,7 +297,6 @@ findCondition <- function(x) {
       answer = "Control"
   } 
   return (answer)}
-
 ```
 
 
@@ -308,7 +306,7 @@ This method is the most intuitive: for each miRNA, we measure if there is a sign
 
 ``` {R t-test}
 
-ttestDataset = countsTrain
+ttestDataset = normTrain
 
 # Lists of samples that are "Control"  and  "Case"
 controlsTrain = ttestDataset[grepl("Control", colnames(ttestDataset))]
@@ -342,7 +340,7 @@ ttestDataset$effectSize <- round(ttestDataset$caseMean / ttestDataset$controlMea
 ttestDataset$adjPValue <- p.adjust(ttestDataset$pValue, method = "BH")
 
 # Delete intermediary files
-rm(controlsTrain, casesTrain)
+#rm(controlsTrain, casesTrain)
 
 # Display statistics on the effect size
 summary(ttestDataset$effectSize)
@@ -350,28 +348,42 @@ summary(ttestDataset$effectSize)
 # Display statistics on the p-value
 summary(ttestDataset$pValue)
 
+```
+
+
+``` {R ttest-filter}
 #----------------------------------------------------
 # Remove the miRNA where the effect size is NA
-ttestDataset = ttestDataset[!is.na(ttestDataset$effectSize), ]
+ttestDatasetFilt = ttestDataset[!is.na(ttestDataset$effectSize), ]
 
 #----------------------------------------------------
 
-# Pick min effect size (we picked it to obtain ~20 miRNAs)
-minEffectSize = 2 
+# Pick min effect size
+minEffectSize = 4 
 
 # Pick max p-value
 maxPValue = 0.05
 
 # Filter based on effect size
-ttestDataset <- ttestDataset[ttestDataset$effectSize > minEffectSize |
-                           ttestDataset$effectSize < 1/minEffectSize, ]
+ttestDatasetFilt = ttestDatasetFilt[ttestDatasetFilt$effectSize > minEffectSize |
+                           ttestDatasetFilt$effectSize < 1/minEffectSize, ]
 
 # Filter based on p-value
-ttestDataset = ttestDataset[ttestDataset$pValue < maxPValue, ]
+ttestDatasetFilt = ttestDatasetFilt[ttestDatasetFilt$pValue < maxPValue, ]
 
 # Create an array of the selected miRNAs
-ttestmiRNA <- rownames(ttestDataset)
+ttestmiRNA <- rownames(ttestDatasetFilt)
 cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
+
+```
+
+``` {R, look-at-mirna, include = FALSE}
+
+# Olivier Loudig used an off-the-shelf program and found that miR-375 may play a role.
+# Checking in our dataset if this is the case.
+
+mir375 = ttestDataset[grepl("mir-375", rownames(ttestDataset)), c("pValue", "effectSize")]
+
 
 
 ```
@@ -445,12 +457,17 @@ cat("There are", length(deseqmiRNA), "miRNAs selected by DESeq2")
 ```
 
 
+### Method #3: HDBSCAN clustering
+
+
+
+
 ### Filter datasets with the selected miRNAs
 
 ``` {R filter datasets}
 
 # Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
-mirnaModel <- deseqmiRNA # deseqmiRNA OR ttestmiRNA
+mirnaModel <- ttestmiRNA # deseqmiRNA OR ttestmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -684,7 +701,11 @@ plot(perf)
 ```
 ### Naive Bayes
 
-TBD
+``` {R naive-bayes}
+
+
+
+```
 
 
 ## Conclusion
