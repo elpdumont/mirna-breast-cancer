@@ -118,36 +118,58 @@ nbmiRNAsRaw <- nrow(rawCounts)
 
 ### Import the sample info file
 
-In the matrix above, we do not know if a sample is "Control" (healthy) or "Case" (Breast Cancer). The sample info file will give us this information. 
+In the matrix above, we do not know if a sample is "Control" (non-metastatic breast cancer) or "Case" (metastatic breast cancer). The sample info file will give us this information. 
 
-There are 137 "Case" samples and 125 "Control" samples.
+There are 137 "Case" samples and 125 "Control" samples. There is another sample info file where 224 samples were balanced between case and control samples and paired with each other. However replicates were present in the file and they need to be removed. Samples were paired if they came from women who have the same age and same tumor type but a different outcome (metastatic vs non-metastatic breast cancer). 
 
 
 ```{R sample-info}
 
-# We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
-sampleInfo <- read.csv(file = 'raw_data/sample_info_DC.csv', header = TRUE)
+# Pick the sample info file to work with
+pairedSamples <- TRUE # TRUE OR FALSE
 
-# Remove the samples identified to be excluded (37 samples)
-sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
+if (pairedSamples == TRUE) {
+  sampleFileName <- "raw_data/sample_info_dc_paired_analysis.csv"
+} else {
+  sampleFileName <- "raw_data/sample_info_DC.csv"
+}
+
+# We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
+sampleInfo <- read.csv(file = sampleFileName, header = TRUE)
 
 # Remove the samples that neither case or control (71 samples)
 sampleInfo = sampleInfo[sampleInfo$status %in%c('Case', 'Control'), ]
 
 # Keep the columns of interest
-sampleInfo = sampleInfo[,c('subsample','status')]
+sampleInfo = sampleInfo[, c('subsample','status', 'tmm', 'id')]
 
 # Rename the columns
-colnames(sampleInfo) = c('sample','condition')
-
-# Remove the duplicate samples
-sampleInfo =  sampleInfo[!duplicated(sampleInfo$sample),]
-
-# Remove the rows where the condition is neither 'Case' or 'Control'
-sampleInfo = subset(sampleInfo, condition=="Case" | condition=="Control")
+colnames(sampleInfo) = c('sample','condition', 'tmm', 'id')
 
 # Lower case
 sampleInfo$sample = tolower(sampleInfo$sample)
+sampleInfo$tmm = tolower(sampleInfo$tmm)
+sampleInfo$id = tolower(sampleInfo$id)
+
+
+
+# Remove the replicate samples (at random between 2 replicates)
+sampleInfo = sampleInfo[!duplicated(sampleInfo$sample),]
+
+# Re-balance the dataset between Cases and Controls
+
+
+# All replicate samples are "Control". Need to exclude the one without its paired Case.
+# To do that, we make sure there is pair for each (stratum and TMM) if t
+#sampleInfo =  sampleInfo[!duplicated(sampleInfo$sample),]
+
+#dim(sampleInfo[sampleInfo$condition == 'Case', ])
+#dim(sampleInfo[sampleInfo$condition == 'Control', ])
+
+findPairedSamples <- function(x) {
+  
+}
+
 
 # Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017Y_Case"
 # We need to keep the pairs of samples in the same training set
@@ -155,7 +177,11 @@ sampleInfo$sampleName <- paste(str_extract(
         sampleInfo$sample, "k.*"), "_",
         sampleInfo$condition, sep = "")
 
-# Remove a few samples that would duplicate the new ames
+# Remove the samples identified to be excluded (37 samples), only if samples are not paired
+sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
+
+
+# Remove a few samples that would duplicate the new names
 sampleInfo = sampleInfo[!sampleInfo$sample %in%
                             c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
                               'ol_srna_tmm17_k604b2') , ]
