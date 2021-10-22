@@ -40,6 +40,9 @@ library(matrixStats) # for rowMax
 # Library for HDBSCAN (clustering)  
 library(dbscan)
 
+# Library for rtsne
+library(Rtsne)
+
 library(naivebayes)
 
 # Libraries for MDS
@@ -110,8 +113,6 @@ head(rawCounts[1:3,1:4])
 
 nbSamplesRaw <- ncol(rawCounts)
 nbmiRNAsRaw <- nrow(rawCounts)
-
-
 ```
 
 
@@ -137,56 +138,53 @@ if (pairedSamples == TRUE) {
 # We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
 sampleInfo <- read.csv(file = sampleFileName, header = TRUE)
 
-# Remove the samples that neither case or control (71 samples)
+# Remove the samples that neither case or control
 sampleInfo = sampleInfo[sampleInfo$status %in%c('Case', 'Control'), ]
 
 # Keep the columns of interest
-sampleInfo = sampleInfo[, c('subsample','status', 'tmm', 'id')]
+sampleInfo = sampleInfo[, c('subsample','status', 'id', 'exclude')]
 
 # Rename the columns
-colnames(sampleInfo) = c('sample','condition', 'tmm', 'id')
+colnames(sampleInfo) = c('sample','condition', 'id', 'exclude')
 
-# Lower case
-sampleInfo$sample = tolower(sampleInfo$sample)
-sampleInfo$tmm = tolower(sampleInfo$tmm)
-sampleInfo$id = tolower(sampleInfo$id)
-
-
-
-# Remove the replicate samples (at random between 2 replicates)
-sampleInfo = sampleInfo[!duplicated(sampleInfo$sample),]
-
-# Re-balance the dataset between Cases and Controls
-
-
-# All replicate samples are "Control". Need to exclude the one without its paired Case.
-# To do that, we make sure there is pair for each (stratum and TMM) if t
-#sampleInfo =  sampleInfo[!duplicated(sampleInfo$sample),]
-
-#dim(sampleInfo[sampleInfo$condition == 'Case', ])
-#dim(sampleInfo[sampleInfo$condition == 'Control', ])
-
-findPairedSamples <- function(x) {
-  
-}
-
-
-# Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017Y_Case"
-# We need to keep the pairs of samples in the same training set
-sampleInfo$sampleName <- paste(str_extract(
-        sampleInfo$sample, "k.*"), "_",
-        sampleInfo$condition, sep = "")
-
-# Remove the samples identified to be excluded (37 samples), only if samples are not paired
+# Remove the samples identified to be excluded
 sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
 
+# Write names in lower case
+sampleInfo$sample = tolower(sampleInfo$sample)
+sampleInfo$id = tolower(sampleInfo$id)
+
+# Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017_Case"
+sampleInfo$sampleName <- paste(str_extract(
+        sampleInfo$id, "k\\d+"), "_",
+        sampleInfo$condition, sep = "")
+
+if (pairedSamples == TRUE) {
+  # Remove the replicate samples (at random between 2 replicates)
+  #sampleInfo = sampleInfo[!duplicated(sampleInfo$sample),]
+
+  # Remove duplicate samples
+  sampleInfo = sampleInfo[!duplicated(sampleInfo$sampleName),]
+
+}
+
+# At this point the dataset should be balanced.
+if (dim(sampleInfo[sampleInfo$condition == 'Case', ])[1] == dim(sampleInfo[sampleInfo$condition == 'Control', ])[1]) {
+  cat("The dataset is balanced")
+} else {
+  cat("The dataset is NOT balanced")
+}
 
 # Remove a few samples that would duplicate the new names
-sampleInfo = sampleInfo[!sampleInfo$sample %in%
-                            c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
-                              'ol_srna_tmm17_k604b2') , ]
+#sampleInfo = sampleInfo[!sampleInfo$sample %in%
+#                            c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
+#                              'ol_srna_tmm17_k604b2') , ]
 
 cat("There are ", length(sampleInfo[sampleInfo$condition == 'Case', ]$sample), "Case samples", "and", length(sampleInfo[sampleInfo$condition == 'Control', ]$sample), "Control samples")
+
+# Keep only the column of the new name and the status
+sampleInfo = sampleInfo[, c('sample', 'sampleName', 'condition')]
+colnames(sampleInfo) = c('sampleOldName', 'sampleNewName', 'condition')
 
 ```
 
@@ -196,7 +194,7 @@ Now, we remove from the matrix of counts all samples that are not in the sampleI
 ``` {r rename-samples-in-count-matrix}
 
 # Keep the samples of the count matrix that are in the sample info file.
-rawCountsId = rawCounts[names(rawCounts) %in% sampleInfo$sample]
+rawCountsId = rawCounts[names(rawCounts) %in% sampleInfo$sampleOldName]
 
 # Identify the samples that are not paired.
 idSamples <- colnames(rawCountsId)
@@ -206,9 +204,9 @@ cat("There are", length(excludedSamples), "samples excluded from the dataset")
 
 # Rename columns of the count matrix.
 tmp <- as.data.frame(colnames(rawCountsId))
-tmp$new_name = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sample == x, 'sampleName'])
+tmp$newName = apply(tmp, 1, function(x) sampleInfo[sampleInfo$sampleOldName == x, 'sampleNewName'])
 
-colnames(rawCountsId) = tmp$new_name
+colnames(rawCountsId) = tmp$newName
 
 rm(tmp)
 
@@ -225,17 +223,15 @@ That leaves us with 5k-30k miRNAs (down from 635k), depending on the parameters.
 ```{R filter-coverage}
 
 # Parameters
-minCount <- 20 
-maxPerc <- 0.99
+minCount <- 100 
+maxPerc <- 0.9
+
+samplesAnalysis <- colnames(rawCountsId)
 
 # # We start by making a copy of the dataframe
 rawCountsIdCov <- rawCountsId
 
-# We save the column names
-columnNames <- colnames(rawCountsIdCov)
-
-# Filter rows by the max of their counts per miRNA
-
+# Create a column for the max number of counts for a given miRNA
 rawCountsIdCov$maxRow = apply(rawCountsIdCov, 1, function(x) max(x))
 
 # Summary of the max number 
@@ -276,8 +272,8 @@ countsNorm = t(apply(
 countsNorm = as.data.frame(countsNorm)
 
 # Remove the column with the maxRow
-rawCountsIdCov = rawCountsIdCov[ , columnNames]
-countsNorm = countsNorm[ , columnNames]
+rawCountsIdCov = rawCountsIdCov[ , samplesAnalysis]
+countsNorm = countsNorm[ , samplesAnalysis]
 
 ```
 
@@ -291,8 +287,15 @@ To make sure we avoid over-fitting, we split the dataset into a training and a t
 # set seed to ensure reproducible results
 set.seed(123)
 
-# Randomize the list of samples
+if (pairedSamples == TRUE) {
+  # For paired analysis, we randomize the pairs of samples
+  sampledNames <- sample(unique(str_extract(colnames(countsNorm), "k\\d+")))
+
+} else {
+  # For unpaired analysis, we randomize all samples
 sampledNames <- sample(colnames(countsNorm))
+}
+
 
 # Take 20% of these sample positions at random for the test dataset
 sampleIndices <- 1:length(sampledNames)
@@ -314,8 +317,10 @@ normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(count
 
 Using boundaries on the number of counts we were able to decrease the number of miRNAs from 635k to 28k but there are still 100x more features than samples, which is termed the "curse of dimensionality".
 
+First we define a function to determine if a column is a Control or Case based on its name
+
 ``` {R useful-functions}
-# Function to figure out if the sample is a "Control" or a "Sample"
+# Function to figure out if the sample is a "Control" or a "Case"
 findCondition <- function(x) {
   if ( grepl('Case', x) ) {
     answer = "Case"
@@ -324,6 +329,36 @@ findCondition <- function(x) {
   } 
   return (answer)}
 ```
+
+
+### Plot the data in 2 dimensions using t-Distributed Stochastic Neighbor Embedding
+
+t-Distributed Stochastic Neighbor Embedding (tSNE) is a non-linear dimensionality reduction technique widely used in single cell data analysis to visualize high-dimensional data in 2 dimensions.
+
+As shown below the miRNAs are unable to cluster the two populations (Case and Control), leaving very little hope that we would be able to build a suitable predictive model.
+
+``` {R tsne}
+
+set.seed(42)
+
+# Create a dataset where rows are sample and columns miRNA
+tsneSet <- as.data.frame(t(normTrain))
+tsneSet$sample <- rownames(tsneSet)
+tsneSet$condition = apply(tsneSet['sample'], 1, findCondition)
+tsneSet = tsneSet[, !names(tsneSet) %in% c('sample') ]
+
+# Create a matrix without the column of sample conditions
+tsneMatrix <- as.matrix(tsneSet[,1:length(colnames(tsneSet))-1])
+
+# Calculate tsne
+tsneOut <- Rtsne(tsneMatrix, pca = FALSE, perplexity = 30, theta = 0) # Run TSNE
+
+# Plot in 2D
+plot(tsneOut$Y,col=as.factor(tsneSet$condition), asp=1)
+
+
+```
+
 
 
 ### Method #1 (naive): T-test on each miRNA between the Cases and Controls
@@ -342,12 +377,12 @@ casesTrain = ttestDataset[grepl("Case", colnames(ttestDataset))]
 ttestDataset$mirna = rownames(ttestDataset)
 
 # Compute the  p-value of a t-test for each miRNA
-ttestDataset$pValue <- apply(ttestDataset, 1,
+suppressWarnings(ttestDataset$pValue <- apply(ttestDataset, 1,
                               function(x) round(wilcox.test(
                                 as.numeric(controlsTrain[x['mirna'], ]),
                                 as.numeric(casesTrain[x['mirna'], ]),
-                                paired = FALSE,
-                                alternative = "two.sided")$p.value, 3))
+                                paired = pairedSamples,
+                                alternative = "two.sided")$p.value, 3)))
 
 ttestDataset$controlMean <- apply(ttestDataset, 1,
                               function(x) round(mean( 
@@ -385,7 +420,7 @@ ttestDatasetFilt = ttestDataset[!is.na(ttestDataset$effectSize), ]
 #----------------------------------------------------
 
 # Pick min effect size
-minEffectSize = 4 
+minEffectSize = 2 
 
 # Pick max p-value
 maxPValue = 0.05
@@ -485,15 +520,70 @@ cat("There are", length(deseqmiRNA), "miRNAs selected by DESeq2")
 
 ### Method #3: HDBSCAN clustering
 
+``` {R hdbscan}
+
+hdbNormTrain <- normTrain
+
+# Start from normTrain and create only two columns (case and control)
+controlsNormTrain = hdbNormTrain[grepl("Control", colnames(hdbNormTrain))]
+casesNormTrain = hdbNormTrain[grepl("Case", colnames(hdbNormTrain))]
+
+# Create a column with the row names
+hdbNormTrain$mirna = rownames(hdbNormTrain)
 
 
+hdbNormTrain$controlMean <- apply(hdbNormTrain, 1,
+                              function(x) round(mean( 
+                                as.numeric( controlsNormTrain[x['mirna'], ] ), 
+                                na.rm = FALSE ),3))
+
+hdbNormTrain$caseMean <- apply(hdbNormTrain, 1,
+                              function(x) round(mean( 
+                                as.numeric(casesNormTrain[x['mirna'], ]), 
+                                na.rm = FALSE ), 3))
+
+hdbNormTrain = hdbNormTrain[, c('controlMean', 'caseMean')]
+
+#rownames(hdbNormTrain) <- 1:nrow(hdbNormTrain)
+#colnames(hdbNormTrain) = c('X', 'Y')
+
+plot(hdbNormTrain, pch = 20)
+
+#---------------------
+clusters <- hdbscan(hdbNormTrain, minPts = 10)
+
+# Display the number of clusters
+clusters
+
+# Display the distributions of clusters as a function of average(Case) and average(Control)
+# The graph does not show convincing clusters
+plot(hdbNormTrain, col=clusters$cluster+1, pch=20)
+
+
+hdbscanMirna <- as.data.frame(clusters$cluster)
+colnames(hdbscanMirna) = c('clusterAssignment')
+hdbscanMirna$outlierScore = clusters$outlier_scores
+hdbscanMirna$mirna = row.names(hdbNormTrain)
+
+# Remove the "noise" miRNAs (were not assigned to any cluster)
+hdbscanMirna = hdbscanMirna[hdbscanMirna$clusterAssignment > 0, ]
+
+# Display stats about the outliers scores
+summary(hdbscanMirna$outlierScore)
+
+# Keep the most representative miRNA of each cluster (by taking the smallest outlier score)
+hdbmiRNA <- hdbscanMirna[hdbscanMirna$outlierScore < 0.2, c('mirna')]
+
+
+
+```
 
 ### Filter datasets with the selected miRNAs
 
 ``` {R filter datasets}
 
 # Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
-mirnaModel <- ttestmiRNA # deseqmiRNA OR ttestmiRNA
+mirnaModel <- deseqmiRNA # deseqmiRNA OR ttestmiRNA OR hdbmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -502,10 +592,7 @@ countsTestFilt = countsTest[mirnaModel, ]
 # Matrices of normalized counts
 normTestFilt <- normTest[mirnaModel, ]
 normTrainFilt <- normTrain[mirnaModel, ]
-
-
 ```
-
 
 ## Predictions using machine-learning techniques
 
@@ -578,7 +665,7 @@ Because sequencing of miRNAs is cumbersome and expensive, our goal is to select 
 cvLasso <- cv.glmnet(xTraining, trainingLabels, family = "gaussian")
 
 # Build model (Family can be binomial, poisson, gaussian)
-lassoModel <- glmnet(xTraining, trainingLabels, alpha = 1, family = "gaussian", lambda = cvLasso$lambda.min)
+lassoModel <- glmnet(xTraining, trainingLabels, alpha = 1, family = "binomial", lambda = cvLasso$lambda.min)
 
 xTest <- model.matrix(condition ~., testSet)[,-1]
 probabilities <- lassoModel %>% predict(newx = xTest, type="response")
