@@ -11,12 +11,14 @@ Like many areas in genomics (the study of the genome sequence) and transcriptomi
 
 In this particular case, our dataset comes from the expression count of micro-RNAs ("miRNAs") that were extracted from formalin-fixed paraffin-embedded tissue specimens. All tissue specimens come from women's breast diagnosed with cancer. "Control" tissues have non-metastatic breast cancer while "Case" tissues have metastatic breast cancer. Tissues were paired in (Case, Control) when the cancers had the same tumor grade and came from women with the age. miRNAs are single-stranded non-coding RNA with about two dozen nucleotides.
 
-The dataset comprises of 290 samples (half comes from healthy women and half come women diagnosed with breast cancer) and ~635k miRNAs were profiled. The goal of this project is to find a set of miRNAs whose expression levels can be used to differentiate between healthy patients and patients with breast cancer.
+The dataset comprises of 290 samples, 210 of which are paired (samples came from women with the same age and same tumor type but different metastatic progression). The goal of this project is to find a set of miRNAs whose expression levels can be used to differentiate between healthy patients and patients with breast cancer.
 
-The work is divided in two steps:
-1. Clustering the miRNAs 
-2. Apply machine-learning models on representatives of the clusters.
+The work is divided in three steps:
+1. Prepare the dataset and divide it into training and test sets.
+2. Clustering the miRNAs 
+3. Apply machine-learning models on representatives of the clusters.
 
+As we will see below, a visualization method widely used in RNA-seq (t-distributed stochastic neighbor embedding) was not able to visually identify clusters between Cases and Controls. Therefore, as expected, all clustering approaches combined with machine-learning models did not yield any good predictive results.
 
 
 ```{r, initialization, include=FALSE}
@@ -70,15 +72,11 @@ In this file, the NAs were replaced with zeros.
 After importing, we concatenate the first two columns (mir_id and mir_seq) to have a unique identifier per miRNA. We then rename  each row with the miRNA new name.
 
 
-
 ```{R import-file}
 
 # Raw counts where NAs were replaced with zeros
 rawCounts <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
                        sep = '\t',header = TRUE)
-
-# Head of the matrix of counts
-head(rawCounts[1:3,1:4])
 
 # minimize all caps (better when using the package DESEq2)
 colnames(rawCounts) = tolower(colnames(rawCounts))
@@ -108,11 +106,11 @@ rawCounts <- rawCounts[,-1]
 # Delete variables.
 rm(sampleNames)
 
-# Head of the matrix of counts
-head(rawCounts[1:3,1:4])
-
 nbSamplesRaw <- ncol(rawCounts)
 nbmiRNAsRaw <- nrow(rawCounts)
+
+head(rowCounts)
+
 ```
 
 
@@ -174,11 +172,6 @@ if (dim(sampleInfo[sampleInfo$condition == 'Case', ])[1] == dim(sampleInfo[sampl
 } else {
   cat("The dataset is NOT balanced")
 }
-
-# Remove a few samples that would duplicate the new names
-#sampleInfo = sampleInfo[!sampleInfo$sample %in%
-#                            c('ol_srna_tmm19_k668g2', 'ol_srna_tmm19_k837y2',
-#                              'ol_srna_tmm17_k604b2') , ]
 
 cat("There are ", length(sampleInfo[sampleInfo$condition == 'Case', ]$sample), "Case samples", "and", length(sampleInfo[sampleInfo$condition == 'Control', ]$sample), "Control samples")
 
@@ -250,7 +243,7 @@ maxCount <- quantile(rawCountsIdCov$maxRow, maxPerc)
 rawCountsIdCov = rawCountsIdCov[rawCountsIdCov$maxRow <= maxCount, ] 
 
 # Summary of max counts per miRNA after removing the over-expressed miRNAs
-summary(rawCountsIdCov$maxRow)
+#summary(rawCountsIdCov$maxRow)
 
 
 ```
@@ -359,8 +352,6 @@ plot(tsneOut$Y,col=as.factor(tsneSet$condition), asp=1)
 
 ```
 
-
-
 ### Method #1 (naive): T-test on each miRNA between the Cases and Controls
 
 This method is the most intuitive: for each miRNA, we measure if there is a significant differently-expressed measurement between the Cases and the Controls.
@@ -444,9 +435,6 @@ cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
 # Checking in our dataset if this is the case.
 
 mir375 = ttestDataset[grepl("mir-375", rownames(ttestDataset)), c("pValue", "effectSize")]
-
-
-
 ```
 
 ### Method #2 (existing bioinformatics package): DESeq2
@@ -520,61 +508,23 @@ cat("There are", length(deseqmiRNA), "miRNAs selected by DESeq2")
 
 ### Method #3: HDBSCAN clustering
 
+HDBSCAN is a clustering technique relying on density (in high dimensions) widely used in single-cell RNA-seq. When applied to our dataset, it is unable to find any cluster.
+
 ``` {R hdbscan}
 
-hdbNormTrain <- normTrain
+# Create a dataset where rows are sample and columns miRNA
+hdbSet <- as.data.frame(t(normTrain))
+hdbSet$sample <- rownames(hdbSet)
+hdbSet$condition = apply(hdbSet['sample'], 1, findCondition)
+hdbSet = hdbSet[, !names(hdbSet) %in% c('sample') ]
 
-# Start from normTrain and create only two columns (case and control)
-controlsNormTrain = hdbNormTrain[grepl("Control", colnames(hdbNormTrain))]
-casesNormTrain = hdbNormTrain[grepl("Case", colnames(hdbNormTrain))]
+# Create a matrix without the column of sample conditions
+hdbSet <- as.matrix(hdbSet[,1:length(colnames(hdbSet))-1])
 
-# Create a column with the row names
-hdbNormTrain$mirna = rownames(hdbNormTrain)
+clusters <- hdbscan(hdbSet, minPts = 100)
 
-
-hdbNormTrain$controlMean <- apply(hdbNormTrain, 1,
-                              function(x) round(mean( 
-                                as.numeric( controlsNormTrain[x['mirna'], ] ), 
-                                na.rm = FALSE ),3))
-
-hdbNormTrain$caseMean <- apply(hdbNormTrain, 1,
-                              function(x) round(mean( 
-                                as.numeric(casesNormTrain[x['mirna'], ]), 
-                                na.rm = FALSE ), 3))
-
-hdbNormTrain = hdbNormTrain[, c('controlMean', 'caseMean')]
-
-#rownames(hdbNormTrain) <- 1:nrow(hdbNormTrain)
-#colnames(hdbNormTrain) = c('X', 'Y')
-
-plot(hdbNormTrain, pch = 20)
-
-#---------------------
-clusters <- hdbscan(hdbNormTrain, minPts = 10)
-
-# Display the number of clusters
+# Display the number of clusters -- Could not find any clusters
 clusters
-
-# Display the distributions of clusters as a function of average(Case) and average(Control)
-# The graph does not show convincing clusters
-plot(hdbNormTrain, col=clusters$cluster+1, pch=20)
-
-
-hdbscanMirna <- as.data.frame(clusters$cluster)
-colnames(hdbscanMirna) = c('clusterAssignment')
-hdbscanMirna$outlierScore = clusters$outlier_scores
-hdbscanMirna$mirna = row.names(hdbNormTrain)
-
-# Remove the "noise" miRNAs (were not assigned to any cluster)
-hdbscanMirna = hdbscanMirna[hdbscanMirna$clusterAssignment > 0, ]
-
-# Display stats about the outliers scores
-summary(hdbscanMirna$outlierScore)
-
-# Keep the most representative miRNA of each cluster (by taking the smallest outlier score)
-hdbmiRNA <- hdbscanMirna[hdbscanMirna$outlierScore < 0.2, c('mirna')]
-
-
 
 ```
 
@@ -780,51 +730,12 @@ table(pred = rpartPred, true = testSet[, c('condition')])
 rpartAccuracy = mean(rpartPred == testSet$condition)
 cat("The accuracy is", rpartAccuracy, "\n")
 
-# The following command should return the probabilities of the test set but returns the probabilities of the training set
-rpartProb <- predict(rpartModel, testSet[ , !names(testSet) %in% c('condition')], type = "prob")
-
-
-# ROC
-pred <- prediction(as.data.frame(attr(rpartPred, "prob"))$Case, testLabels)
-perf <- performance(pred,"tpr","fpr")
-par(pty="s")
-
-# Plot the ROC curve
-plot(perf,  main = "ROC curve")
-# plot the no-prediction line
-rpartAUC <- performance(pred, measure = "auc")
-rpartAUC <- rpartAUC@y.values[[1]]
-
-cat("The AUC is", svmAUC)  
-
-# Regression parameters  
-#coef(cv_lasso, cv_lasso$lambda.min)
-
-
-# precision/recall curve (x-axis: recall, y-axis: precision)
-perf <- performance(pred, "prec", "rec")
-plot(perf)
-
-# sensitivity/specificity curve (x-axis: specificity,
-# y-axis: sensitivity)
-perf <- performance(pred, "sens", "spec")
-plot(perf)
-
 
 ```
-### Naive Bayes
 
-``` {R naive-bayes}
-
-
-
-```
 
 
 ## Conclusion
 
-Our "naive" approach for identifying differentialy-expressed miRNAs performed as well as the more elaborate, published DESeq2 bioinformatics package when the miRNAs were used in machine-learning models to predict the diagnosis based on miRNAs.
-
-Make a comparison table of clustering/models for accuracy & AUC.
-For the models try a few more options.
+The miRNAs were not predictive of the chances of a metastatic breast cancer.
 
