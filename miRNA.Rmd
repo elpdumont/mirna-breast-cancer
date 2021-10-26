@@ -18,7 +18,7 @@ The work is divided in three steps:
 2. Clustering the miRNAs 
 3. Apply machine-learning models on representatives of the clusters.
 
-As we will see below, a visualization method widely used in RNA-seq (t-distributed stochastic neighbor embedding) was not able to visually identify clusters between Cases and Controls. Therefore, as expected, all clustering approaches combined with machine-learning models did not yield any good predictive results.
+As we will see below, a visualization method widely used in RNA-seq (t-distributed stochastic neighbor embedding) was not able to visually identify clusters between Cases and Controls. Therefore, as expected, all clustering approaches combined with machine-learning models did not yield any good predictive results. The best we obtained was to select miRNAs using the package DESeq, a bioinformatics package specializing in differentialy-expressed miRNAs between two populations of samples, and support vector machine model. This yieled a 71% accuracy and 71% AUC.
 
 
 ```{r, initialization, include=FALSE}
@@ -138,7 +138,7 @@ rm(sampleNames)
 nbSamplesRaw <- ncol(rawCounts)
 nbmiRNAsRaw <- nrow(rawCounts)
 
-head(rawCounts)
+head(rawCounts[1:3,1:3])
 
 ```
 Below we look at the distribution of miRNA types. For instance `hsa` stands for homo sapiens miRNa. Other classes of miRNAs come from viruses.
@@ -336,7 +336,7 @@ countsNorm = countsNorm[ , samplesAnalysis]
 ```
 
 
-## Split the dataset into training (66.66% of data) and test (33.33% of data) sets.
+## Split the dataset into training and test datasets.
 
 To make sure we avoid over-fitting, we split the dataset into a training and a test datasets.
 
@@ -368,6 +368,9 @@ countsTrain = rawCountsIdCov[grepl(paste(trainSamples, collapse = "|"), colnames
 
 normTest = countsNorm[grepl(paste(testSamples, collapse = "|"), colnames(countsNorm))]
 normTrain = countsNorm[grepl(paste(trainSamples, collapse = "|"), colnames(countsNorm))]
+
+cat("There are ", length(colnames(normTrain)), "samples in the training dataset and", length(colnames(normTest)), "samples in the testing dataset")
+
 ```
 
 
@@ -516,14 +519,14 @@ colnames(deseqSampleInfo) = c('sample')
 deseqSampleInfo$condition = apply(deseqSampleInfo['sample'], 1, findCondition)
 
 ## DESeq2 Analysis
-dds <- DESeqDataSetFromMatrix(deseqCounts, 
+dds <- suppressWarnings(DESeqDataSetFromMatrix(deseqCounts, 
                                   colData = deseqSampleInfo, 
-                                  design = ~ condition)
+                                  design = ~ condition))
 
 dds$condition <- relevel(dds$condition, ref = "Control")
 
 # Compute the up and down regulated miRNAs
-dds <- DESeq(dds)
+dds <- suppressWarnings(DESeq(dds))
 
 ## DESeq2 results
 deseqModel <- results(dds, filterFun = ihw, alpha = 0.05, name = "condition_Case_vs_Control")
@@ -800,5 +803,4 @@ cat("The accuracy is", rpartAccuracy, "\n")
 
 ## Conclusion
 
-The miRNAs were not predictive of the chances of a metastatic breast cancer.
-
+The best combination was to use miRNAs identified with DESeq2 and use these miRNAs in a support vector machine model (linear kernel), yielding to 71% accuracy.
