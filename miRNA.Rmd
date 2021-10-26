@@ -734,7 +734,7 @@ trainingSet$condition = as.factor(trainingSet$condition)
 
 # SVM kernels are polynomial, linear, radial, sigmoid
 svmModel <- svm(condition ~ ., data = trainingSet, type = 'C-classification', 
-                kernel = "polynomial", cost = 10, gamma = 1, probability = TRUE)
+                kernel = "linear", cost = 10, gamma = 1, probability = TRUE)
 
 # Generate predictions on the test dataset
 svmPred <- predict(svmModel, 
