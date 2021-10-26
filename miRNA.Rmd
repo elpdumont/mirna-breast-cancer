@@ -24,7 +24,7 @@ As we will see below, a visualization method widely used in RNA-seq (t-distribut
 ```{r, initialization, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-#knitr::opts_knit$set(root.dir = "/Users/Emmanuel/code/mirna-breast-cancer/")
+knitr::opts_knit$set(root.dir = "/Users/em/code/mirna-breast-cancer/")
 
 ```
 
@@ -65,6 +65,11 @@ library(rpart) # regression decision trees
 
 ## Import, clean the data, and filter the data based on coverage
 
+``` {R pick-dataset}
+
+datasetName = 'placenta' # 'breast' or 'placenta'
+```
+
 ### Import the matrices of miRNA expression counts per sample
 
 In this file, the NAs were replaced with zeros.
@@ -72,17 +77,29 @@ In this file, the NAs were replaced with zeros.
 After importing, we concatenate the first two columns (mir_id and mir_seq) to have a unique identifier per miRNA. We then rename  each row with the miRNA new name.
 
 
-```{R import-file}
+```{R import-file-breast, include = FALSE}
 
 # Raw counts where NAs were replaced with zeros
-rawCounts <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
+# Rows are miRNAs
+# Columns are samples
+if (datasetName == 'placenta') {
+  rawCounts <- read.csv(file = 'raw_data/placenta.csv', header = TRUE)
+} else if (datasetName == 'breast') {
+  rawCounts <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
                        sep = '\t',header = TRUE)
+}
+
+```
+
+
+
+``` {R clean raw-count}
 
 # minimize all caps (better when using the package DESEq2)
 colnames(rawCounts) = tolower(colnames(rawCounts))
 
-# Obtain the sample names (The first two columns are the miRNA ID and its sequence)
-sampleNames <- colnames(rawCounts)[3:ncol(rawCounts)]
+# Obtain the sample names by grepping "sRNA
+sampleNames <- colnames(rawCounts)[grepl("srna", colnames(rawCounts))]
 
 # Check that every sample is named uniquely
 if (length(unique(sampleNames)) != length(sampleNames)){
@@ -91,7 +108,11 @@ if (length(unique(sampleNames)) != length(sampleNames)){
 
 # Concatenate the first two columns of the miR dataframe to create 
 # a unique ID per isoform
-rawCounts$mir_rna <- paste(rawCounts$mir_id, "_", rawCounts$mir_seq, sep = "")
+if("mir_seq" %in% colnames(rawCounts)) {
+  rawCounts$mir_rna <- paste(rawCounts$mir_id, "_", rawCounts$mir_seq, sep = "")
+} else {
+  rawCounts$mir_rna = rawCounts$mir_id
+}
 
 # Re-construct a new set of columns
 rawCounts = rawCounts[, c('mir_rna', sampleNames)]
@@ -109,11 +130,22 @@ rm(sampleNames)
 nbSamplesRaw <- ncol(rawCounts)
 nbmiRNAsRaw <- nrow(rawCounts)
 
-head(rowCounts)
+head(rawCounts)
 
 ```
+Below we look at the distribution of miRNA types. For instance `hsa` stands for homo sapiens miRNa. Other classes of miRNAs come from viruses.
 
 
+``` {R mirna-types}
+
+hsaMirna <- as.numeric(length(which(grepl("hsa", rownames(rawCounts)) == TRUE)))
+
+hsaPerc <- round(100*hsaMirna/length(rownames(rawCounts)), 3)
+
+cat("There are", hsaPerc, "% homosapiens mIRNAs")
+
+
+```
 
 ### Import the sample info file
 
@@ -127,10 +159,14 @@ There are 137 "Case" samples and 125 "Control" samples. There is another sample 
 # Pick the sample info file to work with
 pairedSamples <- TRUE # TRUE OR FALSE
 
-if (pairedSamples == TRUE) {
-  sampleFileName <- "raw_data/sample_info_dc_paired_analysis.csv"
-} else {
-  sampleFileName <- "raw_data/sample_info_DC.csv"
+if (datasetName == 'placenta') {
+  sampleFileName <- "raw_data/placenta_sample_info.csv"
+} else if (datasetName == 'breast') {
+  if (pairedSamples == TRUE) {
+    sampleFileName <- "raw_data/sample_info_dc_paired_analysis.csv"
+  } else {
+    sampleFileName <- "raw_data/sample_info_DC.csv"
+  }
 }
 
 # We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
@@ -139,23 +175,44 @@ sampleInfo <- read.csv(file = sampleFileName, header = TRUE)
 # Remove the samples that neither case or control
 sampleInfo = sampleInfo[sampleInfo$status %in%c('Case', 'Control'), ]
 
-# Keep the columns of interest
-sampleInfo = sampleInfo[, c('subsample','status', 'id', 'exclude')]
 
-# Rename the columns
-colnames(sampleInfo) = c('sample','condition', 'id', 'exclude')
+if (datasetName == 'breast') {
+  # Keep the columns of interest
+  sampleInfo = sampleInfo[, c('subsample','status', 'id', 'exclude')]
+  
+  # Rename the columns
+  colnames(sampleInfo) = c('sample','condition', 'id', 'exclude')
+  
+  # Remove the samples identified to be excluded
+  sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
+  
+  # Write id in lower case  
+  sampleInfo$id = tolower(sampleInfo$id)
 
-# Remove the samples identified to be excluded
-sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
 
+} else if (datasetName == 'placenta') {
+  
+  # Rename the columns
+  colnames(sampleInfo) = c('sample','condition')
+}
+  
 # Write names in lower case
 sampleInfo$sample = tolower(sampleInfo$sample)
-sampleInfo$id = tolower(sampleInfo$id)
 
-# Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017_Case"
-sampleInfo$sampleName <- paste(str_extract(
-        sampleInfo$id, "k\\d+"), "_",
+# Rename samples 
+
+if (datasetName == 'breast') {
+  #"OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017_Case"
+  sampleInfo$sampleName <- paste(
+        str_extract(sampleInfo$id, "k\\d+"), "_",
         sampleInfo$condition, sep = "")
+} else if (datasetName == 'placenta') {
+  # ol_srna_nick_maternal_plap_h111 becomes h111_plap_Case
+  sampleInfo$sampleName <- paste(
+        str_extract(sampleInfo$sample, "h\\d+"), "_",
+        str_extract(sampleInfo$sample, "p[a-z]+"), "_",
+        sampleInfo$condition, sep = "")
+}
 
 if (pairedSamples == TRUE) {
   # Remove the replicate samples (at random between 2 replicates)
@@ -216,8 +273,8 @@ That leaves us with 5k-30k miRNAs (down from 635k), depending on the parameters.
 ```{R filter-coverage}
 
 # Parameters
-minCount <- 100 
-maxPerc <- 0.9
+minCount <- 50 
+maxPerc <- 0.99
 
 samplesAnalysis <- colnames(rawCountsId)
 
@@ -411,7 +468,7 @@ ttestDatasetFilt = ttestDataset[!is.na(ttestDataset$effectSize), ]
 #----------------------------------------------------
 
 # Pick min effect size
-minEffectSize = 2 
+minEffectSize = 1.1 
 
 # Pick max p-value
 maxPValue = 0.05
@@ -533,7 +590,7 @@ clusters
 ``` {R filter datasets}
 
 # Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
-mirnaModel <- deseqmiRNA # deseqmiRNA OR ttestmiRNA OR hdbmiRNA
+mirnaModel <- ttestmiRNA # deseqmiRNA OR ttestmiRNA OR hdbmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -622,11 +679,10 @@ probabilities <- lassoModel %>% predict(newx = xTest, type="response")
 predictedClasses <- ifelse(probabilities > 0.5, "Case", "Control")
 
 # Confusion matrix
-table(pred = predictedClasses, true = testSet[, c('condition')])
+#table(pred = predictedClasses, true = testSet[, c('condition')])
 
 # Model accuracy
 modelAccuracy = mean(predictedClasses == testSet$condition)
-cat("The accuracy is", modelAccuracy, "\n")
 
 # ROC curve
 pred <- prediction(as.vector(probabilities), as.vector(testLabels))
@@ -642,7 +698,7 @@ plot(perf,  main = "ROC curve")
 lassoAUC <- performance(pred, measure = "auc")
 lassoAUC <- lassoAUC@y.values[[1]]
 
-cat("The AUC is", lassoAUC)  
+cat("The accuracy is", modelAccuracy, "and the AUC is", lassoAUC)  
 
 # Regression parameters  
 #coef(cv_lasso, cv_lasso$lambda.min)
@@ -650,12 +706,12 @@ cat("The AUC is", lassoAUC)
 
 # precision/recall curve (x-axis: recall, y-axis: precision)
 perf <- performance(pred, "prec", "rec")
-plot(perf)
+#plot(perf)
 
 # sensitivity/specificity curve (x-axis: specificity,
 # y-axis: sensitivity)
 perf <- performance(pred, "sens", "spec")
-plot(perf)
+#plot(perf)
 
 # Coefficients
 #coef(cvLasso, cvLasso$lambda.min)
@@ -682,7 +738,6 @@ table(pred = svmPred, true = testSet[, c('condition')])
 
 # Model accuracy
 svmAccuracy = mean(svmPred == testSet$condition)
-cat("The accuracy is", svmAccuracy, "\n")
 
 # ROC
 pred <- prediction(as.data.frame(attr(svmPred, "probabilities"))$Case, testLabels)
@@ -696,7 +751,7 @@ plot(perf,  main = "ROC curve")
 svmAUC <- performance(pred, measure = "auc")
 svmAUC <- svmAUC@y.values[[1]]
 
-cat("The AUC is", svmAUC)  
+cat("The accuracy is", svmAccuracy,"and the AUC is", svmAUC)  
 
 # Regression parameters  
 #coef(cv_lasso, cv_lasso$lambda.min)
@@ -704,12 +759,12 @@ cat("The AUC is", svmAUC)
 
 # precision/recall curve (x-axis: recall, y-axis: precision)
 perf <- performance(pred, "prec", "rec")
-plot(perf)
+#plot(perf)
 
 # sensitivity/specificity curve (x-axis: specificity,
 # y-axis: sensitivity)
 perf <- performance(pred, "sens", "spec")
-plot(perf)
+#plot(perf)
 
 ```
 
