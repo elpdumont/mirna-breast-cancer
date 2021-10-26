@@ -45,15 +45,11 @@ mir\_seq) to have a unique identifier per miRNA. We then rename each row
 with the miRNA new name.
 
 ``` r
-# Raw counts where NAs were replaced with zeros
-rawCounts <- read.csv(file = 'raw_data/miRNa_count_noNA.txt',
-                       sep = '\t',header = TRUE)
-
 # minimize all caps (better when using the package DESEq2)
 colnames(rawCounts) = tolower(colnames(rawCounts))
 
-# Obtain the sample names (The first two columns are the miRNA ID and its sequence)
-sampleNames <- colnames(rawCounts)[3:ncol(rawCounts)]
+# Obtain the sample names by grepping "sRNA
+sampleNames <- colnames(rawCounts)[grepl("srna", colnames(rawCounts))]
 
 # Check that every sample is named uniquely
 if (length(unique(sampleNames)) != length(sampleNames)){
@@ -62,7 +58,11 @@ if (length(unique(sampleNames)) != length(sampleNames)){
 
 # Concatenate the first two columns of the miR dataframe to create 
 # a unique ID per isoform
-rawCounts$mir_rna <- paste(rawCounts$mir_id, "_", rawCounts$mir_seq, sep = "")
+if("mir_seq" %in% colnames(rawCounts)) {
+  rawCounts$mir_rna <- paste(rawCounts$mir_id, "_", rawCounts$mir_seq, sep = "")
+} else {
+  rawCounts$mir_rna = rawCounts$mir_id
+}
 
 # Re-construct a new set of columns
 rawCounts = rawCounts[, c('mir_rna', sampleNames)]
@@ -80,16 +80,1031 @@ rm(sampleNames)
 nbSamplesRaw <- ncol(rawCounts)
 nbmiRNAsRaw <- nrow(rawCounts)
 
-head(rowCounts)
+head(rawCounts)
 ```
 
-    ##                                                                                               
-    ## 1 new("standardGeneric", .Data = function (x, rows = NULL, cols = NULL,                       
-    ## 2     value = TRUE, na.rm = FALSE, ...)                                                       
-    ## 3 standardGeneric("rowCounts"), generic = structure("rowCounts", package = "MatrixGenerics"), 
-    ## 4     package = "MatrixGenerics", group = list(), valueClass = character(0),                  
-    ## 5     signature = "x", default = NULL, skeleton = (function (x,                               
-    ## 6         rows = NULL, cols = NULL, value = TRUE, na.rm = FALSE,
+    ##                                     ol_srna_tmm1_k063g ol_srna_tmm1_k063y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k124g ol_srna_tmm1_k124y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k585g ol_srna_tmm1_k585y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k628g ol_srna_tmm1_k628y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k666g ol_srna_tmm1_k666y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k668g ol_srna_tmm1_k668y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k755g ol_srna_tmm1_k755y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm1_k757g ol_srna_tmm1_k757y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k582g ol_srna_tmm2_k582y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k605g ol_srna_tmm2_k605y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k658g ol_srna_tmm2_k658y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  1                  0
+    ##                                     ol_srna_tmm2_k723g ol_srna_tmm2_k723y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k745g ol_srna_tmm2_k745y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  2
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k765g ol_srna_tmm2_k765y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k795g ol_srna_tmm2_k795y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm2_k837g ol_srna_tmm2_k837y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k531g ol_srna_tmm3_k531y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k567g ol_srna_tmm3_k567y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k632g ol_srna_tmm3_k632y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k638g ol_srna_tmm3_k638y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k639g ol_srna_tmm3_k639y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k646g ol_srna_tmm3_k646y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k740g ol_srna_tmm3_k740y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm3_k786g ol_srna_tmm3_k786y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k113g ol_srna_tmm4_k113y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k147g ol_srna_tmm4_k147y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k569g ol_srna_tmm4_k569y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k586g ol_srna_tmm4_k586y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k706g ol_srna_tmm4_k706y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k738g ol_srna_tmm4_k738y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  1
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k774g ol_srna_tmm4_k774y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm4_k808g ol_srna_tmm4_k808y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k090g ol_srna_tmm5_k090y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k534g ol_srna_tmm5_k534y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k572g ol_srna_tmm5_k572y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k587g ol_srna_tmm5_k587y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k631g ol_srna_tmm5_k631y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  1
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k699g ol_srna_tmm5_k699y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k701g ol_srna_tmm5_k701y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm5_k785g ol_srna_tmm5_k785y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k148g ol_srna_tmm6_k148y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k576g ol_srna_tmm6_k576y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k584g ol_srna_tmm6_k584y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k598g ol_srna_tmm6_k598y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k614g ol_srna_tmm6_k614y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k673g ol_srna_tmm6_k673y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k772g ol_srna_tmm6_k772y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm6_k798g ol_srna_tmm6_k798y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k558g ol_srna_tmm7_k558y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k561g ol_srna_tmm7_k561y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k570g ol_srna_tmm7_k570y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k583g ol_srna_tmm7_k583y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  1
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k616g ol_srna_tmm7_k616y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k655g ol_srna_tmm7_k655y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k667g ol_srna_tmm7_k667y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm7_k689g ol_srna_tmm7_k689y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k017g ol_srna_tmm8_k017y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k029g ol_srna_tmm8_k029y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k057g ol_srna_tmm8_k057y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k579g ol_srna_tmm8_k579y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k595g ol_srna_tmm8_k595y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k734g ol_srna_tmm8_k734y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k756g ol_srna_tmm8_k756y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm8_k827g ol_srna_tmm8_k827y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k101g ol_srna_tmm9_k101y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k140g ol_srna_tmm9_k140y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k544g ol_srna_tmm9_k544y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k589g ol_srna_tmm9_k589y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k652g ol_srna_tmm9_k652y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k676g ol_srna_tmm9_k676y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k750g ol_srna_tmm9_k750y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm9_k811g ol_srna_tmm9_k811y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                      0                  0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                     0                  0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                       0                  0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                        0                  0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                   0                  0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                  0                  0
+    ##                                     ol_srna_tmm10_k091g ol_srna_tmm10_k091y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k126g ol_srna_tmm10_k126y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k612g ol_srna_tmm10_k612y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k635g ol_srna_tmm10_k635y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k636g ol_srna_tmm10_k636y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k650g ol_srna_tmm10_k650y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k695g ol_srna_tmm10_k695y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm10_k722g ol_srna_tmm10_k722y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k080g ol_srna_tmm11_k080y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k168g ol_srna_tmm11_k168y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k535g ol_srna_tmm11_k535y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k538g ol_srna_tmm11_k538y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k543g ol_srna_tmm11_k543y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k573g ol_srna_tmm11_k573y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k590g ol_srna_tmm11_k590y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm11_k766g ol_srna_tmm11_k766y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k033g ol_srna_tmm12_k033y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k129g ol_srna_tmm12_k129y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k213g ol_srna_tmm12_k213y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k553g ol_srna_tmm12_k553y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k575g ol_srna_tmm12_k575y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k588g ol_srna_tmm12_k588y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k742g ol_srna_tmm12_k742y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm12_k793g ol_srna_tmm12_k793y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k728a ol_srna_tmm15_k728b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k728c ol_srna_tmm15_k754a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k754b ol_srna_tmm15_k754c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k761s ol_srna_tmm15_k761t
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         2                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k761u ol_srna_tmm15_k761v
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k868a ol_srna_tmm15_k868b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k868c ol_srna_tmm15_k914a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm15_k914b ol_srna_tmm15_k914c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k606a ol_srna_tmm16_k606b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k606c ol_srna_tmm16_k753a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k753b ol_srna_tmm16_k753c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k864a ol_srna_tmm16_k864b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k864c ol_srna_tmm16_k879a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k879b ol_srna_tmm16_k879b2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                    0
+    ##                                     ol_srna_tmm16_k879c ol_srna_tmm16_k967a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm16_k967b ol_srna_tmm16_k967c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k604a ol_srna_tmm17_k604b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k604b2 ol_srna_tmm17_k604c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                   0
+    ##                                     ol_srna_tmm17_k604c2 ol_srna_tmm17_k633a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                   0
+    ##                                     ol_srna_tmm17_k633b ol_srna_tmm17_k633c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k647g ol_srna_tmm17_k647y
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k880a ol_srna_tmm17_k880b
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k880c ol_srna_tmm17_k979a
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm17_k979b ol_srna_tmm17_k979c
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                       0                   0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                      0                   0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                        0                   0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                         0                   0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                    0                   0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                   0                   0
+    ##                                     ol_srna_tmm18_k063g2 ol_srna_tmm18_k063y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k124g2 ol_srna_tmm18_k124y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k585g2 ol_srna_tmm18_k585y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k628g2 ol_srna_tmm18_k628y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k666g2 ol_srna_tmm18_k666y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k668g2 ol_srna_tmm18_k668y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k755g2 ol_srna_tmm18_k755y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm18_k757g2 ol_srna_tmm18_k757y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k091g2 ol_srna_tmm19_k140y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k569y2 ol_srna_tmm19_k583g2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k590y2 ol_srna_tmm19_k606c2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k668g2 ol_srna_tmm19_k673g2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k701g2 ol_srna_tmm19_k721g2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k740y2 ol_srna_tmm19_k782y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k793g2 ol_srna_tmm19_k827y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm19_k837y2 ol_srna_tmm19_k914a2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k582g2 ol_srna_tmm20_k582y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k605g2 ol_srna_tmm20_k605y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k658g2 ol_srna_tmm20_k658y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k723g2 ol_srna_tmm20_k723y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k745g2 ol_srna_tmm20_k745y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k765g2 ol_srna_tmm20_k765y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k795g2 ol_srna_tmm20_k795y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+    ##                                     ol_srna_tmm20_k837g2 ol_srna_tmm20_k837y2
+    ## bhv1-mir-B1_CGGgGTTGGCGGCCGtCGG                        0                    0
+    ## bhv1-mir-B1_GCGTTGGCGGgCGaCGGGAA                       0                    0
+    ## bhv1-mir-B1_GTCCTCGGCGTgGcCGGC                         0                    0
+    ## bhv1-mir-B1_TCCTCGGCGcgGGCGGC                          0                    0
+    ## bhv1-mir-B1_as_CAGGCtCTgAATGTCAAAG                     0                    0
+    ## bhv1-mir-B1_as_CCcGCCCGTCGCCCGCGCgC                    0                    0
+
+Below we look at the distribution of miRNA types. For instance `hsa`
+stands for homo sapiens miRNa. Other classes of miRNAs come from
+viruses.
+
+``` r
+hsaMirna <- as.numeric(length(which(grepl("hsa", rownames(rawCounts)) == TRUE)))
+
+hsaPerc <- round(100*hsaMirna/length(rownames(rawCounts)), 3)
+
+cat("There are", hsaPerc, "% homosapiens mIRNAs")
+```
+
+    ## There are 99.77 % homosapiens mIRNAs
 
 ### Import the sample info file
 
@@ -105,13 +1120,14 @@ they came from women who have the same age and same tumor type but a
 different outcome (metastatic vs non-metastatic breast cancer).
 
 ``` r
-# Pick the sample info file to work with
-pairedSamples <- TRUE # TRUE OR FALSE
-
-if (pairedSamples == TRUE) {
-  sampleFileName <- "raw_data/sample_info_dc_paired_analysis.csv"
-} else {
-  sampleFileName <- "raw_data/sample_info_DC.csv"
+if (datasetName == 'placenta') {
+  sampleFileName <- "raw_data/placenta_sample_info.csv"
+} else if (datasetName == 'breast') {
+  if (pairedSamples == TRUE) {
+    sampleFileName <- "raw_data/sample_info_dc_paired_analysis.csv"
+  } else {
+    sampleFileName <- "raw_data/sample_info_DC.csv"
+  }
 }
 
 # We import the file created by CD who flagged the samples to remove from the analysis and flagged the samples as "Case" or "Control"
@@ -120,23 +1136,47 @@ sampleInfo <- read.csv(file = sampleFileName, header = TRUE)
 # Remove the samples that neither case or control
 sampleInfo = sampleInfo[sampleInfo$status %in%c('Case', 'Control'), ]
 
-# Keep the columns of interest
-sampleInfo = sampleInfo[, c('subsample','status', 'id', 'exclude')]
 
-# Rename the columns
-colnames(sampleInfo) = c('sample','condition', 'id', 'exclude')
+if (datasetName == 'breast') {
+  # Keep the columns of interest
+  sampleInfo = sampleInfo[, c('subsample','status', 'id', 'exclude')]
+  
+  # Rename the columns
+  colnames(sampleInfo) = c('sample','condition', 'id', 'exclude')
+  
+  # Remove the samples identified to be excluded
+  sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
+  
+  # Write id in lower case  
+  sampleInfo$id = tolower(sampleInfo$id)
 
-# Remove the samples identified to be excluded
-sampleInfo = sampleInfo[is.na(sampleInfo$exclude), ]
 
+} else if (datasetName == 'placenta') {
+  
+  # Rename the columns
+  colnames(sampleInfo) = c('sample','condition')
+  
+  # Keep the samples of the method of interest (plasma or PLAP)
+  sampleInfo = sampleInfo[grepl(placentaMethod, sampleInfo$sample),]
+}
+  
 # Write names in lower case
 sampleInfo$sample = tolower(sampleInfo$sample)
-sampleInfo$id = tolower(sampleInfo$id)
 
-# Rename samples so that "OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017_Case"
-sampleInfo$sampleName <- paste(str_extract(
-        sampleInfo$id, "k\\d+"), "_",
+# Rename samples 
+
+if (datasetName == 'breast') {
+  #"OL_sRNA_TMM8_k017Y" which is a "Case" becomes "k017_Case"
+  sampleInfo$sampleName <- paste(
+        str_extract(sampleInfo$id, "k\\d+"), "_",
         sampleInfo$condition, sep = "")
+} else if (datasetName == 'placenta') {
+  # ol_srna_nick_maternal_plap_h111 becomes h111_plap_Case
+  sampleInfo$sampleName <- paste(
+        str_extract(sampleInfo$sample, "h\\d+"), "_",
+        str_extract(sampleInfo$sample, "p[a-z]+"), "_",
+        sampleInfo$condition, sep = "")
+}
 
 if (pairedSamples == TRUE) {
   # Remove the replicate samples (at random between 2 replicates)
@@ -207,8 +1247,8 @@ parameters.
 
 ``` r
 # Parameters
-minCount <- 100 
-maxPerc <- 0.9
+minCount <- 50 
+maxPerc <- 0.99
 
 samplesAnalysis <- colnames(rawCountsId)
 
@@ -234,7 +1274,7 @@ summary(rawCountsIdCov$maxRow)
 ```
 
     ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-    ##     100     150     263    2736     748 1976210
+    ##      50      73     126    1654     345 1976210
 
 ``` r
 # Identify the upper bound for the max number of counts
@@ -275,7 +1315,7 @@ and a test datasets.
 
 ``` r
 # set seed to ensure reproducible results
-set.seed(123)
+set.seed(183)
 
 if (pairedSamples == TRUE) {
   # For paired analysis, we randomize the pairs of samples
@@ -289,7 +1329,7 @@ sampledNames <- sample(colnames(countsNorm))
 
 # Take 20% of these sample positions at random for the test dataset
 sampleIndices <- 1:length(sampledNames)
-testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/3))
+testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/4))
 
 testSamples <- sampledNames[testIndices]
 trainSamples <- sampledNames[-testIndices]
@@ -345,7 +1385,7 @@ tsneSet = tsneSet[, !names(tsneSet) %in% c('sample') ]
 tsneMatrix <- as.matrix(tsneSet[,1:length(colnames(tsneSet))-1])
 
 # Calculate tsne
-tsneOut <- Rtsne(tsneMatrix, pca = FALSE, perplexity = 30, theta = 0) # Run TSNE
+tsneOut <- Rtsne(tsneMatrix, pca = FALSE, perplexity = 1, theta = 0) # Run TSNE
 
 # Plot in 2D
 plot(tsneOut$Y,col=as.factor(tsneSet$condition), asp=1)
@@ -401,15 +1441,15 @@ summary(ttestDataset$effectSize)
 ```
 
     ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
-    ##   0.000   0.696   0.895     Inf   1.149     Inf       7
+    ##   0.000   0.682   0.862     Inf   1.086     Inf       3
 
 ``` r
 # Display statistics on the p-value
 summary(ttestDataset$pValue)
 ```
 
-    ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
-    ##  0.0000  0.1960  0.4170  0.4448  0.6790  1.0000       1
+    ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    ##  0.0000  0.1730  0.3850  0.4327  0.6810  1.0000
 
 ``` r
 #----------------------------------------------------
@@ -419,7 +1459,7 @@ ttestDatasetFilt = ttestDataset[!is.na(ttestDataset$effectSize), ]
 #----------------------------------------------------
 
 # Pick min effect size
-minEffectSize = 2 
+minEffectSize = 1
 
 # Pick max p-value
 maxPValue = 0.05
@@ -436,7 +1476,7 @@ ttestmiRNA <- rownames(ttestDatasetFilt)
 cat("There are", length(ttestmiRNA), "miRNA selected by the t-test methodology")
 ```
 
-    ## There are 148 miRNA selected by the t-test methodology
+    ## There are 532 miRNA selected by the t-test methodology
 
 ### Method \#2 (existing bioinformatics package): DESeq2
 
@@ -483,7 +1523,7 @@ dds <- DESeq(dds)
 
     ## fitting model and testing
 
-    ## -- replacing outliers and refitting for 503 genes
+    ## -- replacing outliers and refitting for 1020 genes
     ## -- DESeq argument 'minReplicatesForReplace' = 7 
     ## -- original counts are preserved in counts(dds)
 
@@ -498,10 +1538,10 @@ summary(deseqModel)
 ```
 
     ## 
-    ## out of 4537 with nonzero total read count
+    ## out of 8402 with nonzero total read count
     ## adjusted p-value < 0.05
-    ## LFC > 0 (up)       : 67, 1.5%
-    ## LFC < 0 (down)     : 107, 2.4%
+    ## LFC > 0 (up)       : 193, 2.3%
+    ## LFC < 0 (down)     : 159, 1.9%
     ## outliers [1]       : 0, 0%
     ## [1] see 'cooksCutoff' argument of ?results
     ## see metadata(res)$ihwResult on hypothesis weighting
@@ -536,7 +1576,7 @@ deseqmiRNA <- c(rownames(mirnaUpregDESeq), rownames(mirnaDownregDESeq))
 cat("There are", length(deseqmiRNA), "miRNAs selected by DESeq2")
 ```
 
-    ## There are 189 miRNAs selected by DESeq2
+    ## There are 221 miRNAs selected by DESeq2
 
 ``` r
 #miR_upreg$miRNA_id <- rownames(miR_upreg)
@@ -567,18 +1607,18 @@ hdbSet = hdbSet[, !names(hdbSet) %in% c('sample') ]
 # Create a matrix without the column of sample conditions
 hdbSet <- as.matrix(hdbSet[,1:length(colnames(hdbSet))-1])
 
-clusters <- hdbscan(hdbSet, minPts = 100)
+clusters <- hdbscan(hdbSet, minPts = 10)
 
 # Display the number of clusters -- Could not find any clusters
 clusters
 ```
 
-    ## HDBSCAN clustering for 140 objects.
-    ## Parameters: minPts = 100
-    ## The clustering contains 0 cluster(s) and 140 noise points.
+    ## HDBSCAN clustering for 158 objects.
+    ## Parameters: minPts = 10
+    ## The clustering contains 0 cluster(s) and 158 noise points.
     ## 
     ##   0 
-    ## 140 
+    ## 158 
     ## 
     ## Available fields: cluster, minPts, cluster_scores, membership_prob,
     ##                   outlier_scores, hc
@@ -690,18 +1730,13 @@ table(pred = predictedClasses, true = testSet[, c('condition')])
 
     ##          true
     ## pred      Case Control
-    ##   Case      13      12
-    ##   Control   22      23
+    ##   Case       9      10
+    ##   Control   17      16
 
 ``` r
 # Model accuracy
 modelAccuracy = mean(predictedClasses == testSet$condition)
-cat("The accuracy is", modelAccuracy, "\n")
-```
 
-    ## The accuracy is 0.5142857
-
-``` r
 # ROC curve
 pred <- prediction(as.vector(probabilities), as.vector(testLabels))
 perf <- performance(pred,"tpr","fpr")
@@ -721,10 +1756,10 @@ plot(perf,  main = "ROC curve")
 lassoAUC <- performance(pred, measure = "auc")
 lassoAUC <- lassoAUC@y.values[[1]]
 
-cat("The AUC is", lassoAUC)  
+cat("The accuracy is", modelAccuracy, "and the AUC is", lassoAUC)  
 ```
 
-    ## The AUC is 0.52
+    ## The accuracy is 0.4807692 and the AUC is 0.5399408
 
 ``` r
 # Regression parameters  
@@ -733,21 +1768,13 @@ cat("The AUC is", lassoAUC)
 
 # precision/recall curve (x-axis: recall, y-axis: precision)
 perf <- performance(pred, "prec", "rec")
-plot(perf)
-```
+#plot(perf)
 
-![](miRNA_files/figure-gfm/lasso-2.png)<!-- -->
-
-``` r
 # sensitivity/specificity curve (x-axis: specificity,
 # y-axis: sensitivity)
 perf <- performance(pred, "sens", "spec")
-plot(perf)
-```
+#plot(perf)
 
-![](miRNA_files/figure-gfm/lasso-3.png)<!-- -->
-
-``` r
 # Coefficients
 #coef(cvLasso, cvLasso$lambda.min)
 ```
@@ -760,7 +1787,7 @@ trainingSet$condition = as.factor(trainingSet$condition)
 
 # SVM kernels are polynomial, linear, radial, sigmoid
 svmModel <- svm(condition ~ ., data = trainingSet, type = 'C-classification', 
-                kernel = "polynomial", cost = 10, gamma = 1, probability = TRUE)
+                kernel = "linear", cost = 100, gamma = 1, probability = TRUE)
 
 # Generate predictions on the test dataset
 svmPred <- predict(svmModel, 
@@ -773,18 +1800,13 @@ table(pred = svmPred, true = testSet[, c('condition')])
 
     ##          true
     ## pred      Case Control
-    ##   Case      31      27
-    ##   Control    4       8
+    ##   Case      16       5
+    ##   Control   10      21
 
 ``` r
 # Model accuracy
 svmAccuracy = mean(svmPred == testSet$condition)
-cat("The accuracy is", svmAccuracy, "\n")
-```
 
-    ## The accuracy is 0.5571429
-
-``` r
 # ROC
 pred <- prediction(as.data.frame(attr(svmPred, "probabilities"))$Case, testLabels)
 perf <- performance(pred,"tpr","fpr")
@@ -802,10 +1824,10 @@ plot(perf,  main = "ROC curve")
 svmAUC <- performance(pred, measure = "auc")
 svmAUC <- svmAUC@y.values[[1]]
 
-cat("The AUC is", svmAUC)  
+cat("The accuracy is", svmAccuracy,"and the AUC is", svmAUC)  
 ```
 
-    ## The AUC is 0.6155102
+    ## The accuracy is 0.7115385 and the AUC is 0.7115385
 
 ``` r
 # Regression parameters  
@@ -814,19 +1836,13 @@ cat("The AUC is", svmAUC)
 
 # precision/recall curve (x-axis: recall, y-axis: precision)
 perf <- performance(pred, "prec", "rec")
-plot(perf)
-```
+#plot(perf)
 
-![](miRNA_files/figure-gfm/svm-2.png)<!-- -->
-
-``` r
 # sensitivity/specificity curve (x-axis: specificity,
 # y-axis: sensitivity)
 perf <- performance(pred, "sens", "spec")
-plot(perf)
+#plot(perf)
 ```
-
-![](miRNA_files/figure-gfm/svm-3.png)<!-- -->
 
 ### Regression trees
 
@@ -842,7 +1858,7 @@ table(pred = rpartPred, true = testSet[, c('condition')])
 
     ##          true
     ## pred      Case Control
-    ##   Case      19      21
+    ##   Case      10      12
     ##   Control   16      14
 
 ``` r
@@ -851,7 +1867,7 @@ rpartAccuracy = mean(rpartPred == testSet$condition)
 cat("The accuracy is", rpartAccuracy, "\n")
 ```
 
-    ## The accuracy is 0.4714286
+    ## The accuracy is 0.4615385
 
 ## Conclusion
 

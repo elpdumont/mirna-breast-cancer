@@ -67,13 +67,13 @@ library(rpart) # regression decision trees
 
 ``` {R pick-dataset, include = FALSE}
 
-datasetName = 'placenta' # 'breast' or 'placenta'
+datasetName = 'breast' # 'breast' or 'placenta'
 
 # For the placenta dataset, pick method ("plasma" or "PLAP")
 placentaMethod <- "PLAP"
 
 # Pick the sample info file to work with
-pairedSamples <- FALSE # TRUE OR FALSE # For placenta, it is false
+pairedSamples <- TRUE # TRUE OR FALSE # For placenta, it is false
 
 
 
@@ -357,7 +357,7 @@ sampledNames <- sample(colnames(countsNorm))
 
 # Take 20% of these sample positions at random for the test dataset
 sampleIndices <- 1:length(sampledNames)
-testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/12))
+testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/4))
 
 testSamples <- sampledNames[testIndices]
 trainSamples <- sampledNames[-testIndices]
@@ -586,7 +586,7 @@ hdbSet = hdbSet[, !names(hdbSet) %in% c('sample') ]
 # Create a matrix without the column of sample conditions
 hdbSet <- as.matrix(hdbSet[,1:length(colnames(hdbSet))-1])
 
-clusters <- hdbscan(hdbSet, minPts = 100)
+clusters <- hdbscan(hdbSet, minPts = 10)
 
 # Display the number of clusters -- Could not find any clusters
 clusters
@@ -734,7 +734,7 @@ trainingSet$condition = as.factor(trainingSet$condition)
 
 # SVM kernels are polynomial, linear, radial, sigmoid
 svmModel <- svm(condition ~ ., data = trainingSet, type = 'C-classification', 
-                kernel = "linear", cost = 10, gamma = 1, probability = TRUE)
+                kernel = "linear", cost = 100, gamma = 1, probability = TRUE)
 
 # Generate predictions on the test dataset
 svmPred <- predict(svmModel, 
