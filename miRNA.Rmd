@@ -65,9 +65,18 @@ library(rpart) # regression decision trees
 
 ## Import, clean the data, and filter the data based on coverage
 
-``` {R pick-dataset}
+``` {R pick-dataset, include = FALSE}
 
 datasetName = 'placenta' # 'breast' or 'placenta'
+
+# For the placenta dataset, pick method ("plasma" or "PLAP")
+placentaMethod <- "PLAP"
+
+# Pick the sample info file to work with
+pairedSamples <- FALSE # TRUE OR FALSE # For placenta, it is false
+
+
+
 ```
 
 ### Import the matrices of miRNA expression counts per sample
@@ -90,7 +99,6 @@ if (datasetName == 'placenta') {
 }
 
 ```
-
 
 
 ``` {R clean raw-count}
@@ -156,9 +164,6 @@ There are 137 "Case" samples and 125 "Control" samples. There is another sample 
 
 ```{R sample-info}
 
-# Pick the sample info file to work with
-pairedSamples <- TRUE # TRUE OR FALSE
-
 if (datasetName == 'placenta') {
   sampleFileName <- "raw_data/placenta_sample_info.csv"
 } else if (datasetName == 'breast') {
@@ -194,6 +199,9 @@ if (datasetName == 'breast') {
   
   # Rename the columns
   colnames(sampleInfo) = c('sample','condition')
+  
+  # Keep the samples of the method of interest (plasma or PLAP)
+  sampleInfo = sampleInfo[grepl(placentaMethod, sampleInfo$sample),]
 }
   
 # Write names in lower case
@@ -335,7 +343,7 @@ To make sure we avoid over-fitting, we split the dataset into a training and a t
 ``` {R split-data}
 
 # set seed to ensure reproducible results
-set.seed(123)
+set.seed(183)
 
 if (pairedSamples == TRUE) {
   # For paired analysis, we randomize the pairs of samples
@@ -349,7 +357,7 @@ sampledNames <- sample(colnames(countsNorm))
 
 # Take 20% of these sample positions at random for the test dataset
 sampleIndices <- 1:length(sampledNames)
-testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/3))
+testIndices <- sample(sampleIndices, trunc(length(sampleIndices)/12))
 
 testSamples <- sampledNames[testIndices]
 trainSamples <- sampledNames[-testIndices]
@@ -401,7 +409,7 @@ tsneSet = tsneSet[, !names(tsneSet) %in% c('sample') ]
 tsneMatrix <- as.matrix(tsneSet[,1:length(colnames(tsneSet))-1])
 
 # Calculate tsne
-tsneOut <- Rtsne(tsneMatrix, pca = FALSE, perplexity = 30, theta = 0) # Run TSNE
+tsneOut <- Rtsne(tsneMatrix, pca = FALSE, perplexity = 1, theta = 0) # Run TSNE
 
 # Plot in 2D
 plot(tsneOut$Y,col=as.factor(tsneSet$condition), asp=1)
@@ -468,7 +476,7 @@ ttestDatasetFilt = ttestDataset[!is.na(ttestDataset$effectSize), ]
 #----------------------------------------------------
 
 # Pick min effect size
-minEffectSize = 1.1 
+minEffectSize = 1
 
 # Pick max p-value
 maxPValue = 0.05
@@ -590,7 +598,7 @@ clusters
 ``` {R filter datasets}
 
 # Pick the miRNAs to be used in the models: ttestmiRNA, deseqmiRNA
-mirnaModel <- ttestmiRNA # deseqmiRNA OR ttestmiRNA OR hdbmiRNA
+mirnaModel <- deseqmiRNA # deseqmiRNA OR ttestmiRNA OR hdbmiRNA
 
 # Matrices of counts
 countsTrainFilt = countsTrain[mirnaModel, ]
@@ -679,7 +687,7 @@ probabilities <- lassoModel %>% predict(newx = xTest, type="response")
 predictedClasses <- ifelse(probabilities > 0.5, "Case", "Control")
 
 # Confusion matrix
-#table(pred = predictedClasses, true = testSet[, c('condition')])
+table(pred = predictedClasses, true = testSet[, c('condition')])
 
 # Model accuracy
 modelAccuracy = mean(predictedClasses == testSet$condition)
